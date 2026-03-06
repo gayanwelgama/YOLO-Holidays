@@ -1,5 +1,7 @@
 [build]
   publish = "."
+  command = "npm install && node scripts/migrate.js"
 
 [functions]
   directory = "netlify/functions"
+  node_bundler = "esbuild"
