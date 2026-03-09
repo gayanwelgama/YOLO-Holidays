@@ -8134,8 +8134,8 @@ function openNewTourModal(type) {
   tSupplierChargesMap = {};
   tSelectedCities = [];
   tSelectedProfit = 0;
-  // Group tours: start with empty bands (user adds as needed). Packages: use 4 DMC defaults.
-  tChildAgeRules = (type === 'group') ? [] : JSON.parse(JSON.stringify(DMC_CHILD_AGE_DEFAULTS));
+  // Both types: start with no child categories selected (user toggles chips as needed)
+  tChildAgeRules = [];
 
   setTourModalType(currentTourModalType);
   document.getElementById('tour-type-toggle').style.display = 'grid';
@@ -8172,7 +8172,22 @@ function openEditTourModal(id, type) {
   tSupplierChargesMap= rec.supplierCharges? JSON.parse(JSON.stringify(rec.supplierCharges)) : {};
   tSelectedCities = rec.cityNights ? [...rec.cityNights] : [];
   tSelectedProfit = rec.profit || 0;
-  tChildAgeRules = rec.childAgeRules ? JSON.parse(JSON.stringify(rec.childAgeRules)) : JSON.parse(JSON.stringify(DMC_CHILD_AGE_DEFAULTS));
+  // Load only rules that match CHILD_TYPES ids; filter out old DMC label-only format
+  const savedAgeRules = rec.childAgeRules ? JSON.parse(JSON.stringify(rec.childAgeRules)) : [];
+  const validCtIds = CHILD_TYPES.map(t => t.id);
+  tChildAgeRules = savedAgeRules.filter(r => r.type && validCtIds.includes(r.type));
+  // Migrate childPcts from array (old) to object (new) if needed
+  tSelectedSuppliers.forEach(sn => {
+    const sp = tSupplierRatesMap[sn];
+    if (!sp || !sp.childPcts || !Array.isArray(sp.childPcts)) return;
+    const objPcts = {};
+    savedAgeRules.forEach((rule, i) => {
+      if (rule.type && validCtIds.includes(rule.type) && sp.childPcts[i] !== undefined) {
+        objPcts[rule.type] = sp.childPcts[i];
+      }
+    });
+    sp.childPcts = objPcts;
+  });
 
   setTourModalType(type);
   document.getElementById('tour-type-toggle').style.display = 'none'; // hide type switcher when editing
@@ -8244,9 +8259,9 @@ function setTourModalType(type) {
   // Old pax/child-category section — hidden for both (replaced by per-pax grid + age rules)
   const paxGrp = document.getElementById('t-pax-group-section');
   if (paxGrp) paxGrp.style.display = 'none';
-  // Child age rules shown for BOTH group tours and packages
+  // t-pkg-child-rules-section is now unused (chips + % are inside tRenderSupplierRates)
   const pkgChild = document.getElementById('t-pkg-child-rules-section');
-  if (pkgChild) pkgChild.style.display = '';
+  if (pkgChild) pkgChild.style.display = 'none';
 }
 
 // ── SUPPLIER CHIPS ────────────────────────────────────────────
@@ -8280,22 +8295,93 @@ function tRenderSupplierRates() {
   if (!tSelectedSuppliers.length) { sec.innerHTML = ''; tUpdateTotalCharges(); return; }
   sec.innerHTML = '';
 
+  // ── Shared CHILD_TYPES chip selector (above all supplier cards) ──────────
+  const chipCard = document.createElement('div');
+  chipCard.style.cssText = 'background:var(--surface2);border:1px solid rgba(99,102,241,0.3);border-radius:10px;padding:14px;margin-bottom:12px';
+  const chipHdr = document.createElement('div');
+  chipHdr.style.cssText = 'font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--blue);font-weight:700;margin-bottom:6px';
+  chipHdr.textContent = '👶 Child Categories';
+  chipCard.appendChild(chipHdr);
+  const chipSub = document.createElement('div');
+  chipSub.style.cssText = 'font-size:11px;color:var(--text2);margin-bottom:10px';
+  chipSub.textContent = 'Toggle child types — set rates (%) per supplier below. Airfares in the ✈ Air Ticket section.';
+  chipCard.appendChild(chipSub);
+  const chipsWrap = document.createElement('div');
+  chipsWrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px';
+  CHILD_TYPES.forEach(ct => {
+    const selected = tChildAgeRules.some(r => r.type === ct.id);
+    const chip = document.createElement('div');
+    chip.style.cssText = `padding:7px 16px;border-radius:20px;cursor:pointer;font-size:13px;font-weight:600;border:1px solid ${selected ? 'var(--blue)' : 'var(--border)'};background:${selected ? 'rgba(99,102,241,0.12)' : 'var(--surface2)'};color:${selected ? 'var(--blue)' : 'var(--text2)'};transition:all 0.15s;user-select:none`;
+    chip.textContent = ct.label;
+    chip.addEventListener('click', () => tToggleChildType(ct.id));
+    chipsWrap.appendChild(chip);
+  });
+  chipCard.appendChild(chipsWrap);
+  sec.appendChild(chipCard);
+
+  // ── Helper: add child % section inside a supplier card ───────────────────
+  function addChildRatesSection(card, name, safeName, getAdultRate) {
+    if (!tChildAgeRules.length) return;
+    const childSection = document.createElement('div');
+    childSection.style.cssText = 'border-top:1px solid var(--border);padding-top:10px;margin-top:8px';
+    const childHdr = document.createElement('div');
+    childHdr.style.cssText = 'font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);font-weight:600;margin-bottom:8px';
+    childHdr.textContent = '👶 Child Rates (% of this supplier\'s rate)';
+    childSection.appendChild(childHdr);
+    tChildAgeRules.forEach(rule => {
+      const typeId = rule.type;
+      const cpObj = (tSupplierRatesMap[name]?.childPcts && typeof tSupplierRatesMap[name].childPcts === 'object' && !Array.isArray(tSupplierRatesMap[name].childPcts))
+        ? tSupplierRatesMap[name].childPcts : {};
+      const pct = cpObj[typeId] !== undefined ? cpObj[typeId] : 0;
+      const adultRate = getAdultRate();
+      const bandRow = document.createElement('div');
+      bandRow.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap';
+      const bandLbl = document.createElement('span');
+      bandLbl.style.cssText = 'font-size:12px;font-weight:600;color:var(--text);min-width:160px';
+      bandLbl.textContent = rule.label;
+      const pctWrap = document.createElement('div');
+      pctWrap.style.cssText = 'display:flex;align-items:center;gap:6px';
+      const pctInp = document.createElement('input');
+      pctInp.className = 'form-input'; pctInp.type = 'number'; pctInp.min = '0'; pctInp.max = '100';
+      pctInp.placeholder = '%'; pctInp.style.cssText = 'width:70px;text-align:center';
+      pctInp.value = pct > 0 ? pct : '';
+      const pctSuffix = document.createElement('span');
+      pctSuffix.style.cssText = 'font-size:11px;color:var(--text2)';
+      pctSuffix.textContent = '% of adult';
+      pctWrap.appendChild(pctInp); pctWrap.appendChild(pctSuffix);
+      const preview = document.createElement('span');
+      preview.className = 'child-pv-' + safeName + '_' + typeId;
+      preview.style.cssText = 'font-size:12px;font-weight:600;color:var(--teal);font-family:"DM Mono",monospace;margin-left:auto';
+      preview.textContent = adultRate > 0 ? (pct === 0 ? 'Free' : 'LKR ' + Math.round(adultRate * pct / 100).toLocaleString()) : '—';
+      pctInp.addEventListener('input', function() {
+        if (!tSupplierRatesMap[name]) tSupplierRatesMap[name] = {};
+        if (!tSupplierRatesMap[name].childPcts || typeof tSupplierRatesMap[name].childPcts !== 'object' || Array.isArray(tSupplierRatesMap[name].childPcts)) tSupplierRatesMap[name].childPcts = {};
+        const newPct = parseInt(this.value) || 0;
+        tSupplierRatesMap[name].childPcts[typeId] = newPct;
+        const curRate = getAdultRate();
+        preview.textContent = curRate > 0 ? (newPct === 0 ? 'Free' : 'LKR ' + Math.round(curRate * newPct / 100).toLocaleString()) : '—';
+        tCalcTotal();
+      });
+      bandRow.appendChild(bandLbl); bandRow.appendChild(pctWrap); bandRow.appendChild(preview);
+      childSection.appendChild(bandRow);
+    });
+    card.appendChild(childSection);
+  }
+
   if (currentTourModalType === 'package') {
-    // ── PACKAGE: per-pax-count rate grid (Solo → 10 Pax) ─────────────
+    // ── PACKAGE: per-pax-count rate grid + child % per supplier ─────────────
     tSelectedSuppliers.forEach(name => {
       const s = suppliers.find(x => x.name === name);
       const icon = s ? (s.type==='DMC'?'🤝':s.type==='Ticketing Agent'?'✈️':'🏢') : '🏢';
       const rates = tSupplierRatesMap[name] || {};
       const svcFee = tSupplierChargesMap[name] !== undefined ? tSupplierChargesMap[name] : '';
-
+      const safeName = name.replace(/[^a-zA-Z0-9]/g, '_');
       const card = document.createElement('div');
       card.style.cssText = 'background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px';
-
       const hdr = document.createElement('div');
       hdr.style.cssText = 'font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--teal);font-weight:700;margin-bottom:10px';
       hdr.textContent = icon + ' ' + name + ' — Rate per Person by Group Size (LKR)';
       card.appendChild(hdr);
-
       // Two rows of 5 pax-count inputs
       [0, 1].forEach(half => {
         const rowGrid = document.createElement('div');
@@ -8314,6 +8400,17 @@ function tRenderSupplierRates() {
           inp.addEventListener('input', function() {
             if (!tSupplierRatesMap[name]) tSupplierRatesMap[name] = {};
             tSupplierRatesMap[name][key] = parseInt(this.value) || 0;
+            // Live-update child previews when couple (pax_2) rate changes
+            if (pl.pax === 2) {
+              const newPax2 = parseInt(this.value) || 0;
+              tChildAgeRules.forEach(rule => {
+                const pv = card.querySelector('.child-pv-' + safeName + '_' + rule.type);
+                if (!pv) return;
+                const cpO = (tSupplierRatesMap[name].childPcts && typeof tSupplierRatesMap[name].childPcts === 'object' && !Array.isArray(tSupplierRatesMap[name].childPcts)) ? tSupplierRatesMap[name].childPcts : {};
+                const cp = cpO[rule.type] !== undefined ? cpO[rule.type] : 0;
+                pv.textContent = newPax2 > 0 ? (cp === 0 ? 'Free' : 'LKR ' + Math.round(newPax2 * cp / 100).toLocaleString()) : '—';
+              });
+            }
             tCalcTotal();
           });
           cell.appendChild(lbl); cell.appendChild(inp);
@@ -8321,8 +8418,7 @@ function tRenderSupplierRates() {
         });
         card.appendChild(rowGrid);
       });
-
-      // Fees (same for all pax counts)
+      // Fees
       const feeWrap = document.createElement('div');
       feeWrap.style.cssText = 'display:flex;align-items:center;gap:10px;border-top:1px solid var(--border);padding-top:10px;margin-top:4px;flex-wrap:wrap';
       const fl = document.createElement('span');
@@ -8338,29 +8434,27 @@ function tRenderSupplierRates() {
       });
       feeWrap.appendChild(fl); feeWrap.appendChild(fi);
       card.appendChild(feeWrap);
+      // Child % section (uses couple/pax_2 rate as preview basis)
+      addChildRatesSection(card, name, safeName, () => parseInt((tSupplierRatesMap[name] || {}).pax_2) || 0);
       sec.appendChild(card);
     });
-    tRenderChildAgeRules();
     return;
   }
 
-  // ── GROUP: single fixed adult rate per supplier + per-supplier child rates ─────────────────────
+  // ── GROUP: fixed adult rate + child % per supplier ─────────────────────
   tSelectedSuppliers.forEach(name => {
     const s = suppliers.find(x => x.name === name);
     const icon = s ? (s.type==='DMC'?'🤝':s.type==='Ticketing Agent'?'✈️':'🏢') : '🏢';
     const rates  = tSupplierRatesMap[name] || {};
     const svcFee = tSupplierChargesMap[name] !== undefined ? tSupplierChargesMap[name] : '';
     const safeName = name.replace(/[^a-zA-Z0-9]/g, '_');
-
     const card = document.createElement('div');
     card.style.cssText = 'background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px';
-
     const hdr = document.createElement('div');
     hdr.style.cssText = 'font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--red);font-weight:700;margin-bottom:10px';
     hdr.textContent = icon + ' ' + name + ' — Fixed Adult Rate (LKR per person)';
     card.appendChild(hdr);
-
-    // Single adult rate input row
+    // Adult rate input
     const inputRow = document.createElement('div');
     inputRow.style.cssText = 'display:flex;align-items:flex-end;gap:16px;margin-bottom:10px;flex-wrap:wrap';
     const adultWrap = document.createElement('div');
@@ -8375,21 +8469,19 @@ function tRenderSupplierRates() {
     adultInp.addEventListener('input', function() {
       if (!tSupplierRatesMap[name]) tSupplierRatesMap[name] = {};
       tSupplierRatesMap[name].adult = parseInt(this.value) || 0;
-      // Live-update child pct previews in this card
       const adultR = parseInt(this.value) || 0;
-      const childPcts = tSupplierRatesMap[name].childPcts || [];
-      tChildAgeRules.forEach((rule, i) => {
-        const pv = card.querySelector('.grp-child-pv-' + safeName + '_' + i);
+      const cpObj2 = (tSupplierRatesMap[name].childPcts && typeof tSupplierRatesMap[name].childPcts === 'object' && !Array.isArray(tSupplierRatesMap[name].childPcts)) ? tSupplierRatesMap[name].childPcts : {};
+      tChildAgeRules.forEach(rule => {
+        const pv = card.querySelector('.child-pv-' + safeName + '_' + rule.type);
         if (!pv) return;
-        const pct = childPcts[i] !== undefined ? childPcts[i] : 0;
-        pv.textContent = adultR > 0 ? (pct === 0 ? 'Free' : 'LKR ' + Math.round(adultR * pct / 100).toLocaleString()) : '—';
+        const p2 = cpObj2[rule.type] !== undefined ? cpObj2[rule.type] : 0;
+        pv.textContent = adultR > 0 ? (p2 === 0 ? 'Free' : 'LKR ' + Math.round(adultR * p2 / 100).toLocaleString()) : '—';
       });
       tUpdateTotalCharges(); tCalcTotal();
     });
     adultWrap.appendChild(adultLbl); adultWrap.appendChild(adultInp);
     inputRow.appendChild(adultWrap);
     card.appendChild(inputRow);
-
     // Fees
     const feeWrap = document.createElement('div');
     feeWrap.style.cssText = 'display:flex;align-items:center;gap:10px;border-top:1px solid var(--border);padding-top:10px;flex-wrap:wrap';
@@ -8406,63 +8498,10 @@ function tRenderSupplierRates() {
     });
     feeWrap.appendChild(fl); feeWrap.appendChild(fi);
     card.appendChild(feeWrap);
-
-    // ── Per-supplier child rates (one row per age band) ─────────────────
-    if (tChildAgeRules.length > 0) {
-      const childSection = document.createElement('div');
-      childSection.style.cssText = 'border-top:1px solid var(--border);padding-top:10px;margin-top:8px';
-      const childHdr = document.createElement('div');
-      childHdr.style.cssText = 'font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);font-weight:600;margin-bottom:8px';
-      childHdr.textContent = '👶 Child Rates (% of this supplier\'s adult rate)';
-      childSection.appendChild(childHdr);
-
-      tChildAgeRules.forEach((rule, i) => {
-        const childPcts = (tSupplierRatesMap[name] || {}).childPcts || [];
-        const pct = childPcts[i] !== undefined ? childPcts[i] : (parseInt(rule.pct)||0);
-
-        const bandRow = document.createElement('div');
-        bandRow.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap';
-
-        const bandLbl = document.createElement('span');
-        bandLbl.style.cssText = 'font-size:12px;font-weight:600;color:var(--text);min-width:90px';
-        bandLbl.textContent = rule.label || ('Band ' + (i+1));
-
-        const pctWrap = document.createElement('div');
-        pctWrap.style.cssText = 'display:flex;align-items:center;gap:6px';
-        const pctInp = document.createElement('input');
-        pctInp.className = 'form-input'; pctInp.type = 'number'; pctInp.min = '0'; pctInp.max = '100';
-        pctInp.placeholder = '%'; pctInp.style.cssText = 'width:70px;text-align:center';
-        pctInp.value = pct > 0 ? pct : '';
-        const pctSuffix = document.createElement('span');
-        pctSuffix.style.cssText = 'font-size:11px;color:var(--text2)';
-        pctSuffix.textContent = '% of adult';
-        pctWrap.appendChild(pctInp); pctWrap.appendChild(pctSuffix);
-
-        const preview = document.createElement('span');
-        preview.className = 'grp-child-pv-' + safeName + '_' + i;
-        preview.style.cssText = 'font-size:12px;font-weight:600;color:var(--teal);font-family:"DM Mono",monospace;margin-left:auto';
-        const adultRate = parseInt((tSupplierRatesMap[name] || {}).adult) || 0;
-        preview.textContent = adultRate > 0 ? (pct === 0 ? 'Free' : 'LKR ' + Math.round(adultRate * pct / 100).toLocaleString()) : '—';
-
-        pctInp.addEventListener('input', function() {
-          if (!tSupplierRatesMap[name]) tSupplierRatesMap[name] = {};
-          if (!tSupplierRatesMap[name].childPcts) tSupplierRatesMap[name].childPcts = [];
-          const newPct = parseInt(this.value) || 0;
-          tSupplierRatesMap[name].childPcts[i] = newPct;
-          const adultR = parseInt(tSupplierRatesMap[name].adult) || 0;
-          preview.textContent = adultR > 0 ? (newPct === 0 ? 'Free' : 'LKR ' + Math.round(adultR * newPct / 100).toLocaleString()) : '—';
-          tCalcTotal();
-        });
-
-        bandRow.appendChild(bandLbl); bandRow.appendChild(pctWrap); bandRow.appendChild(preview);
-        childSection.appendChild(bandRow);
-      });
-      card.appendChild(childSection);
-    }
-
+    // Child % section (uses adult rate as preview basis)
+    addChildRatesSection(card, name, safeName, () => parseInt((tSupplierRatesMap[name] || {}).adult) || 0);
     sec.appendChild(card);
   });
-  tRenderChildAgeRules();
 }
 
 function tUpdateTotalCharges() {
@@ -8473,8 +8512,8 @@ function tUpdateTotalCharges() {
 }
 
 // ── CHILD AGE RULES / BANDS ────────────────────────────────────────────────
-function tRenderGroupChildAirfares() {
-  // Renders group-tour child airfares into the air ticket section
+function tRenderChildTypeAirfares() {
+  // Renders child airfares into the air ticket section (works for both package and group)
   const el = document.getElementById('t-child-airfare-rates');
   if (!el) return;
   el.innerHTML = '';
@@ -8502,13 +8541,10 @@ function tToggleChildType(typeId) {
   if (!ct) return;
   const existingIdx = tChildAgeRules.findIndex(r => r.type === typeId);
   if (existingIdx >= 0) {
-    // Deselect — remove from rules and shift supplier childPcts
-    tSelectedSuppliers.forEach(sn => {
-      if (tSupplierRatesMap[sn]?.childPcts) tSupplierRatesMap[sn].childPcts.splice(existingIdx, 1);
-    });
+    // Deselect — just remove from rules; supplier childPcts object key stays (harmlessly ignored)
     tChildAgeRules.splice(existingIdx, 1);
   } else {
-    // Select — insert in CHILD_TYPES order
+    // Select — insert in CHILD_TYPES display order
     const ctIdx = CHILD_TYPES.findIndex(t => t.id === typeId);
     let insertAt = tChildAgeRules.length;
     for (let i = 0; i < tChildAgeRules.length; i++) {
@@ -8516,159 +8552,16 @@ function tToggleChildType(typeId) {
       if (rIdx > ctIdx) { insertAt = i; break; }
     }
     tChildAgeRules.splice(insertAt, 0, { type: typeId, label: ct.label, pct: 0 });
-    tSelectedSuppliers.forEach(sn => {
-      if (!tSupplierRatesMap[sn]) return;
-      if (!tSupplierRatesMap[sn].childPcts) tSupplierRatesMap[sn].childPcts = [];
-      tSupplierRatesMap[sn].childPcts.splice(insertAt, 0, 0);
-    });
   }
-  tRenderChildAgeRules();
   tRenderSupplierRates();
+  tRenderChildTypeAirfares();
   tCalcTotal();
 }
 
 function tRenderChildAgeRules() {
-  const el = document.getElementById('t-pkg-child-rules-section');
-  if (!el) return;
-  if (!tSelectedSuppliers.length) { el.innerHTML = ''; return; }
-
-  if (currentTourModalType === 'group') {
-    // ── GROUP: child category chip toggles (from CHILD_TYPES) ──────────────
-    tRenderGroupChildAirfares();
-
-    const card = document.createElement('div');
-    card.style.cssText = 'background:var(--surface2);border:1px solid rgba(99,102,241,0.3);border-radius:10px;padding:14px;margin-bottom:12px';
-
-    const hdr = document.createElement('div');
-    hdr.style.cssText = 'font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--blue);font-weight:700;margin-bottom:6px';
-    hdr.textContent = '👶 Child Categories';
-    card.appendChild(hdr);
-
-    const sub = document.createElement('div');
-    sub.style.cssText = 'font-size:11px;color:var(--text2);margin-bottom:10px';
-    sub.textContent = 'Toggle which child types apply. Set rates (%) per supplier above. Set airfares in the ✈ Air Ticket section.';
-    card.appendChild(sub);
-
-    const chipsWrap = document.createElement('div');
-    chipsWrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px';
-    CHILD_TYPES.forEach(ct => {
-      const selected = tChildAgeRules.some(r => r.type === ct.id);
-      const chip = document.createElement('div');
-      chip.style.cssText = `padding:7px 16px;border-radius:20px;cursor:pointer;font-size:13px;font-weight:600;
-        border:1px solid ${selected ? 'var(--blue)' : 'var(--border)'};
-        background:${selected ? 'rgba(99,102,241,0.12)' : 'var(--surface2)'};
-        color:${selected ? 'var(--blue)' : 'var(--text2)'};
-        transition:all 0.15s;user-select:none`;
-      chip.textContent = ct.label;
-      chip.addEventListener('click', () => tToggleChildType(ct.id));
-      chipsWrap.appendChild(chip);
-    });
-    card.appendChild(chipsWrap);
-
-    el.innerHTML = ''; el.appendChild(card);
-    return;
-  }
-
-  // ── PACKAGE: global % + airfare override per band ─────────────────────────
-  const coupleRate = tSelectedSuppliers.reduce((s,n) => {
-    const r = tSupplierRatesMap[n];
-    if (!r) return s;
-    return s + (parseInt(r.pax_2)||0);
-  }, 0);
-  const fees = tSelectedSuppliers.reduce((s,n) => s+(parseInt(tSupplierChargesMap[n])||0), 0);
-
-  function resolveChildTicket(rule, adultTicket) {
-    if (rule.airfare !== undefined && rule.airfare !== '' && rule.airfare !== null) return parseInt(rule.airfare)||0;
-    return Math.round(adultTicket * (parseInt(rule.pct)||0) / 100);
-  }
-
-  const card = document.createElement('div');
-  card.style.cssText = 'background:var(--surface2);border:1px solid rgba(99,102,241,0.3);border-radius:10px;padding:14px;margin-bottom:12px';
-  const hdr = document.createElement('div');
-  hdr.style.cssText = 'font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--blue);font-weight:700;margin-bottom:2px';
-  hdr.textContent = '👶 Child / Infant Age Rules';
-  const sub = document.createElement('div');
-  sub.style.cssText = 'font-size:11px;color:var(--text2);margin-bottom:12px';
-  sub.textContent = 'DMC rate = adult rate × %. Leave ✈ Airfare blank to auto-calculate as % of adult fare. Fees same as adult. Preview uses Couple rate.';
-  card.appendChild(hdr); card.appendChild(sub);
-
-  const grid = document.createElement('div');
-  grid.style.cssText = 'display:grid;gap:10px';
-  tChildAgeRules.forEach((rule, i) => {
-    function updatePreview() {
-      const previewEl = row.querySelector('.t-child-preview');
-      if (!previewEl) return;
-      const pct2     = parseInt(tChildAgeRules[i].pct) || 0;
-      const wt       = document.getElementById('t-with-ticket').checked;
-      const ticket2  = wt ? (parseInt(document.getElementById('t-ticket-price').value)||0) : 0;
-      const profit2  = tSelectedProfit || (parseInt(document.getElementById('t-profit').value)||0);
-      const childSup2 = Math.round(coupleRate * pct2 / 100);
-      const childTkt  = wt ? resolveChildTicket(tChildAgeRules[i], ticket2) : 0;
-      const tot2      = childSup2 + fees + childTkt + profit2;
-      const isFree    = tot2 === 0 || (pct2 === 0 && fees === 0 && childTkt === 0);
-      previewEl.textContent = coupleRate > 0 || fees > 0 ? (isFree ? 'Free' : 'LKR ' + tot2.toLocaleString()) : '—';
-    }
-
-    const row = document.createElement('div');
-    const topRow = document.createElement('div');
-    topRow.style.cssText = 'display:grid;grid-template-columns:100px 1fr auto;gap:10px;align-items:center';
-
-    const lbl = document.createElement('div');
-    lbl.style.cssText = 'font-size:13px;font-weight:600;color:var(--text)';
-    lbl.textContent = rule.label;
-
-    const pctWrap = document.createElement('div');
-    pctWrap.style.cssText = 'display:flex;align-items:center;gap:6px';
-    const pctInp = document.createElement('input');
-    pctInp.className = 'form-input'; pctInp.type = 'number'; pctInp.min = '0'; pctInp.max = '100';
-    pctInp.placeholder = '%'; pctInp.style.cssText = 'width:65px;text-align:center';
-    pctInp.value = rule.pct !== undefined ? rule.pct : '';
-    pctInp.addEventListener('input', function() {
-      tChildAgeRules[i].pct = parseInt(this.value) || 0;
-      tCalcTotal(); updatePreview();
-    });
-    const pctLbl = document.createElement('span');
-    pctLbl.style.cssText = 'font-size:12px;color:var(--text2)';
-    pctLbl.textContent = '% of adult rate';
-    pctWrap.appendChild(pctInp); pctWrap.appendChild(pctLbl);
-
-    const preview = document.createElement('div');
-    preview.className = 't-child-preview';
-    preview.style.cssText = 'font-size:13px;font-weight:600;color:var(--teal);font-family:"DM Mono",monospace;text-align:right;min-width:110px';
-
-    topRow.appendChild(lbl); topRow.appendChild(pctWrap); topRow.appendChild(preview);
-
-    const airRow = document.createElement('div');
-    airRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding-left:110px';
-    const airIcon = document.createElement('span');
-    airIcon.style.cssText = 'font-size:12px;color:var(--text2)';
-    airIcon.textContent = '✈ Airfare (LKR)';
-    const airInp = document.createElement('input');
-    airInp.className = 'form-input'; airInp.type = 'number'; airInp.min = '0';
-    airInp.placeholder = 'blank = % of adult fare';
-    airInp.style.cssText = 'width:180px;font-size:12px';
-    airInp.value = (rule.airfare !== undefined && rule.airfare !== '') ? rule.airfare : '';
-    airInp.addEventListener('input', function() {
-      tChildAgeRules[i].airfare = this.value !== '' ? parseInt(this.value) : '';
-      tCalcTotal(); updatePreview();
-    });
-    airRow.appendChild(airIcon); airRow.appendChild(airInp);
-
-    row.appendChild(topRow); row.appendChild(airRow);
-    grid.appendChild(row);
-
-    const pct = parseInt(rule.pct) || 0;
-    const withTicket = document.getElementById('t-with-ticket').checked;
-    const ticket = withTicket ? (parseInt(document.getElementById('t-ticket-price').value)||0) : 0;
-    const profit = tSelectedProfit || (parseInt(document.getElementById('t-profit').value)||0);
-    const childSup = Math.round(coupleRate * pct / 100);
-    const childTicket = withTicket ? resolveChildTicket(rule, ticket) : 0;
-    const previewTotal = childSup + fees + childTicket + profit;
-    const isFreeInit = previewTotal === 0 || (pct === 0 && fees === 0 && childTicket === 0);
-    preview.textContent = coupleRate > 0 || fees > 0 ? (isFreeInit ? 'Free' : 'LKR ' + previewTotal.toLocaleString()) : '—';
-  });
-  card.appendChild(grid);
-  el.innerHTML = ''; el.appendChild(card);
+  // Chips + per-supplier % are now rendered inside tRenderSupplierRates.
+  // This function now only updates child airfares in the ✈ Air Ticket section.
+  tRenderChildTypeAirfares();
 }
 
 // ── PACKAGE INCLUSION ROW BUILDER ─────────────────────────────────────────
@@ -8810,6 +8703,8 @@ function tRenderChildCategories() {
 }
 
 function tRenderChildAirfares() {
+  // If pricing bands are active, let tRenderChildTypeAirfares handle the airfare section
+  if (tChildAgeRules.length > 0) { tRenderChildTypeAirfares(); return; }
   const el = document.getElementById('t-child-airfare-rates');
   if (!el) return;
   el.innerHTML='';
@@ -8832,11 +8727,7 @@ function tRenderChildAirfares() {
 function tToggleAirTicket() {
   const withTicket = document.getElementById('t-with-ticket').checked;
   document.getElementById('t-air-ticket-section').style.display = withTicket ? '' : 'none';
-  if (currentTourModalType === 'group') {
-    tRenderGroupChildAirfares();
-  } else {
-    tRenderChildAirfares();
-  }
+  tRenderChildTypeAirfares();
   tCalcTotal();
 }
 
@@ -9029,21 +8920,26 @@ function tCalcTotal() {
     });
     html += '</tbody></table>';
 
-    // Child pricing preview (based on couple rate)
+    // Child pricing preview (per-supplier %, couple/pax_2 basis)
     if (tChildAgeRules.length > 0 && tSelectedSuppliers.length > 0) {
-      const coupleRate = tSelectedSuppliers.reduce((s,n) => { const r=tSupplierRatesMap[n]; return s+(r?(parseInt(r.pax_2)||0):0); }, 0);
-      if (coupleRate > 0 || fees > 0 || ticketPrice > 0) {
+      if (fees > 0 || ticketPrice > 0 || tSelectedSuppliers.some(n => (tSupplierRatesMap[n]?.pax_2||0) > 0)) {
         html += '<div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px">';
-        html += '<div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);font-weight:600;margin-bottom:8px">👶 Child Rates (Couple basis) — fees always same as adult</div>';
+        html += '<div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);font-weight:600;margin-bottom:8px">👶 Child Rates (Couple basis) — fees same as adult</div>';
         tChildAgeRules.forEach(rule => {
-          const pct = parseInt(rule.pct)||0;
-          const childSup    = Math.round(coupleRate * pct / 100);
-          const childTicket = withTicket ? ((rule.airfare !== undefined && rule.airfare !== '' && rule.airfare !== null) ? (parseInt(rule.airfare)||0) : Math.round(ticketPrice * pct / 100)) : 0;
+          const typeId = rule.type;
+          const childSup = tSelectedSuppliers.reduce((s, sn) => {
+            const r = tSupplierRatesMap[sn];
+            if (!r) return s;
+            const cpObj = (r.childPcts && typeof r.childPcts === 'object' && !Array.isArray(r.childPcts)) ? r.childPcts : {};
+            const p = cpObj[typeId] !== undefined ? cpObj[typeId] : 0;
+            return s + Math.round((parseInt(r.pax_2)||0) * p / 100);
+          }, 0);
+          const childTicket = withTicket ? ((rule.airfare !== undefined && rule.airfare !== '' && rule.airfare !== null) ? (parseInt(rule.airfare)||0) : ticketPrice) : 0;
           const childTotal  = childSup + fees + childTicket + profit;
-          const airfareSuffix = (rule.airfare !== undefined && rule.airfare !== '') ? ` · ✈ LKR ${(parseInt(rule.airfare)||0).toLocaleString()}` : ` · ✈ ${pct}% of fare`;
-          const isFree = childTotal === 0 || (pct === 0 && fees === 0 && childTicket === 0 && profit === 0);
+          const airfareSuffix = (rule.airfare !== undefined && rule.airfare !== '') ? ` · ✈ LKR ${(parseInt(rule.airfare)||0).toLocaleString()}` : ` · ✈ same as adult`;
+          const isFree = childTotal === 0 || (childSup === 0 && fees === 0 && childTicket === 0 && profit === 0);
           html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.05)">`;
-          html += `<span style="font-size:12px;color:var(--text)">${rule.label} <span style="color:var(--text2);font-size:11px">(${pct}% rate${withTicket ? airfareSuffix : ''})</span></span>`;
+          html += `<span style="font-size:12px;color:var(--text)">${rule.label}${withTicket ? `<span style="color:var(--text2);font-size:11px"> ${airfareSuffix}</span>` : ''}</span>`;
           html += `<span style="font-size:13px;font-weight:600;color:var(--teal);font-family:'DM Mono',monospace">${isFree ? 'Free' : 'LKR '+childTotal.toLocaleString()}</span>`;
           html += '</div>';
         });
@@ -9078,36 +8974,34 @@ function tCalcTotal() {
   gHtml += `<div style="display:flex;justify-content:space-between;padding:9px 12px;background:rgba(248,113,113,0.07)"><span style="font-size:13px;font-weight:700">💰 Price per Adult</span><span style="font-size:14px;font-weight:700;color:var(--accent);font-family:'DM Mono',monospace">${totalPerAdult > 0 ? 'LKR '+totalPerAdult.toLocaleString() : '—'}</span></div>`;
   gHtml += '</div>';
 
-  // Child pricing preview — per-supplier childPcts
+  // Child pricing preview — per-supplier object-keyed childPcts
   if (tChildAgeRules.length > 0 && tSelectedSuppliers.length > 0) {
     gHtml += '<div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px">';
     gHtml += '<div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);font-weight:600;margin-bottom:8px">👶 Child Rates — per-supplier % + same fees</div>';
-    tChildAgeRules.forEach((rule, i) => {
-      // Sum per-supplier child rates for this band
+    tChildAgeRules.forEach(rule => {
+      const typeId = rule.type;
       const childSup = tSelectedSuppliers.reduce((s, sn) => {
         const r = tSupplierRatesMap[sn];
         if (!r) return s;
-        const pcts = r.childPcts || [];
-        const pct = pcts[i] !== undefined ? pcts[i] : (parseInt(rule.pct)||0);
+        const cpObj = (r.childPcts && typeof r.childPcts === 'object' && !Array.isArray(r.childPcts)) ? r.childPcts : {};
+        const pct = cpObj[typeId] !== undefined ? cpObj[typeId] : 0;
         return s + Math.round((parseInt(r.adult)||0) * pct / 100);
       }, 0);
-      // Child airfare: from rule.airfare (in air ticket section) or same as adult
       const childTicket = withTicketG ? ((rule.airfare !== undefined && rule.airfare !== '' && rule.airfare !== null) ? (parseInt(rule.airfare)||0) : ticketPrice) : 0;
       const childTotal  = childSup + fees + childTicket + profit;
       const isFree = childTotal === 0;
       const airStr = withTicketG ? (rule.airfare !== undefined && rule.airfare !== '' ? ` · ✈ LKR ${(parseInt(rule.airfare)||0).toLocaleString()}` : ` · ✈ same as adult`) : '';
-      // Show pct breakdown across suppliers
       const pctSummary = tSelectedSuppliers.map(sn => {
         const r = tSupplierRatesMap[sn];
         if (!r) return null;
-        const pcts = r.childPcts || [];
-        const pct = pcts[i] !== undefined ? pcts[i] : (parseInt(rule.pct)||0);
+        const cpObj2 = (r.childPcts && typeof r.childPcts === 'object' && !Array.isArray(r.childPcts)) ? r.childPcts : {};
+        const pct = cpObj2[typeId] !== undefined ? cpObj2[typeId] : 0;
         const short = sn.length > 10 ? sn.slice(0,10)+'…' : sn;
         return pct > 0 ? short + ': ' + pct + '%' : short + ': Free';
       }).filter(Boolean).join(' | ');
       gHtml += `<div style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.05)">`;
       gHtml += `<div style="display:flex;justify-content:space-between;align-items:center">`;
-      gHtml += `<span style="font-size:12px;color:var(--text)">${rule.label||'Band '+(i+1)}</span>`;
+      gHtml += `<span style="font-size:12px;color:var(--text)">${rule.label}</span>`;
       gHtml += `<span style="font-size:13px;font-weight:600;color:var(--teal);font-family:'DM Mono',monospace">${isFree ? 'Free' : 'LKR '+childTotal.toLocaleString()}</span>`;
       gHtml += `</div>`;
       if (pctSummary) gHtml += `<div style="font-size:10px;color:var(--text2);margin-top:2px">${pctSummary}${airStr}</div>`;
@@ -9555,11 +9449,11 @@ function jgrpSelectGroup(id) {
   if (g.childAgeRules && g.childAgeRules.length > 0) {
     let ch = '<div style="display:grid;gap:8px;margin-top:4px">';
     g.childAgeRules.forEach((rule, i) => {
-      // Compute effective child rate from per-supplier childPcts (new model) or fallback to global pct
+      // Compute effective child rate from per-supplier object-keyed childPcts
       const childSup = Object.entries(g.supplierRates || {}).reduce((s, [sName, r]) => {
         if (!r || typeof r !== 'object') return s;
-        const childPcts = r.childPcts || [];
-        const pct = childPcts[i] !== undefined ? childPcts[i] : (parseInt(rule.pct)||0);
+        const cpObj = (r.childPcts && typeof r.childPcts === 'object' && !Array.isArray(r.childPcts)) ? r.childPcts : {};
+        const pct = cpObj[rule.type] !== undefined ? cpObj[rule.type] : 0;
         return s + Math.round((parseInt(r.adult)||0) * pct / 100);
       }, 0);
       const adultSupTotal = Object.values(g.supplierRates || {}).reduce((s, r) => s + (r ? (parseInt(r.adult)||0) : 0), 0);
@@ -9594,11 +9488,11 @@ function jgrpUpdatePricePreview() {
   (g.childAgeRules || []).forEach((rule, i) => {
     const count = parseInt(document.getElementById('jgrp-child-' + i)?.value) || 0;
     if (!count) return;
-    // Per-supplier child rates (new model) with fallback to global pct (legacy)
+    // Per-supplier child rates from object-keyed childPcts
     const childSup = Object.entries(g.supplierRates || {}).reduce((s, [sName, r]) => {
       if (!r || typeof r !== 'object') return s;
-      const childPcts = r.childPcts || [];
-      const pct = childPcts[i] !== undefined ? childPcts[i] : (parseInt(rule.pct)||0);
+      const cpObj = (r.childPcts && typeof r.childPcts === 'object' && !Array.isArray(r.childPcts)) ? r.childPcts : {};
+      const pct = cpObj[rule.type] !== undefined ? cpObj[rule.type] : 0;
       return s + Math.round((parseInt(r.adult)||0) * pct / 100);
     }, 0);
     const adultTicket = g.withTicket ? (g.ticketPrice || 0) : 0;
@@ -9659,12 +9553,12 @@ function confirmJoinGroupTour() {
     const childTicket = g.withTicket
       ? ((rule.airfare !== undefined && rule.airfare !== '' && rule.airfare !== null) ? (parseInt(rule.airfare)||0) : adultTicket)
       : 0;
-    // Per-supplier child rates from childPcts (new model) with fallback to global pct (legacy)
+    // Per-supplier child rates from object-keyed childPcts
     Object.keys(invSupplierRates).forEach(sName => {
       const adr = invSupplierRates[sName].adult || 0;
       const sRates = g.supplierRates?.[sName] || {};
-      const childPcts = sRates.childPcts || [];
-      const pct = childPcts[i] !== undefined ? childPcts[i] : (parseInt(rule.pct)||0);
+      const cpObj = (sRates.childPcts && typeof sRates.childPcts === 'object' && !Array.isArray(sRates.childPcts)) ? sRates.childPcts : {};
+      const pct = cpObj[type] !== undefined ? cpObj[type] : 0;
       invSupplierRates[sName]['child_' + type] = Math.round(adr * pct / 100);
     });
     const charges  = g.charges || 0;
