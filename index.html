@@ -8497,19 +8497,31 @@ function tRenderGroupChildAirfares() {
   });
 }
 
-function tAddChildAgeBand() {
-  tChildAgeRules.push({ label: 'New Band', pct: 0 });
-  tRenderChildAgeRules();
-  tRenderSupplierRates();
-  tCalcTotal();
-}
-
-function tRemoveChildAgeBand(i) {
-  tChildAgeRules.splice(i, 1);
-  // Remove this band's pct from each supplier
-  tSelectedSuppliers.forEach(sn => {
-    if (tSupplierRatesMap[sn]?.childPcts) tSupplierRatesMap[sn].childPcts.splice(i, 1);
-  });
+function tToggleChildType(typeId) {
+  const ct = CHILD_TYPES.find(x => x.id === typeId);
+  if (!ct) return;
+  const existingIdx = tChildAgeRules.findIndex(r => r.type === typeId);
+  if (existingIdx >= 0) {
+    // Deselect — remove from rules and shift supplier childPcts
+    tSelectedSuppliers.forEach(sn => {
+      if (tSupplierRatesMap[sn]?.childPcts) tSupplierRatesMap[sn].childPcts.splice(existingIdx, 1);
+    });
+    tChildAgeRules.splice(existingIdx, 1);
+  } else {
+    // Select — insert in CHILD_TYPES order
+    const ctIdx = CHILD_TYPES.findIndex(t => t.id === typeId);
+    let insertAt = tChildAgeRules.length;
+    for (let i = 0; i < tChildAgeRules.length; i++) {
+      const rIdx = CHILD_TYPES.findIndex(t => t.id === tChildAgeRules[i].type);
+      if (rIdx > ctIdx) { insertAt = i; break; }
+    }
+    tChildAgeRules.splice(insertAt, 0, { type: typeId, label: ct.label, pct: 0 });
+    tSelectedSuppliers.forEach(sn => {
+      if (!tSupplierRatesMap[sn]) return;
+      if (!tSupplierRatesMap[sn].childPcts) tSupplierRatesMap[sn].childPcts = [];
+      tSupplierRatesMap[sn].childPcts.splice(insertAt, 0, 0);
+    });
+  }
   tRenderChildAgeRules();
   tRenderSupplierRates();
   tCalcTotal();
@@ -8521,67 +8533,37 @@ function tRenderChildAgeRules() {
   if (!tSelectedSuppliers.length) { el.innerHTML = ''; return; }
 
   if (currentTourModalType === 'group') {
-    // ── GROUP: child age band manager (labels only — % is per-supplier, airfare is in air ticket section) ──
+    // ── GROUP: child category chip toggles (from CHILD_TYPES) ──────────────
     tRenderGroupChildAirfares();
 
     const card = document.createElement('div');
     card.style.cssText = 'background:var(--surface2);border:1px solid rgba(99,102,241,0.3);border-radius:10px;padding:14px;margin-bottom:12px';
-    const hdrRow = document.createElement('div');
-    hdrRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:10px';
+
     const hdr = document.createElement('div');
-    hdr.style.cssText = 'font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--blue);font-weight:700';
-    hdr.textContent = '👶 Child Age Bands';
-    const addBtn = document.createElement('button');
-    addBtn.className = 'btn btn-ghost btn-sm';
-    addBtn.style.cssText = 'border-color:var(--blue);color:var(--blue);font-size:12px;padding:4px 10px';
-    addBtn.textContent = '＋ Add Band';
-    addBtn.addEventListener('click', tAddChildAgeBand);
-    hdrRow.appendChild(hdr); hdrRow.appendChild(addBtn);
-    card.appendChild(hdrRow);
+    hdr.style.cssText = 'font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--blue);font-weight:700;margin-bottom:6px';
+    hdr.textContent = '👶 Child Categories';
+    card.appendChild(hdr);
 
     const sub = document.createElement('div');
     sub.style.cssText = 'font-size:11px;color:var(--text2);margin-bottom:10px';
-    sub.textContent = 'Define child age categories. Set rates (%) inside each supplier card above. Set airfares in the ✈ Air Ticket section.';
+    sub.textContent = 'Toggle which child types apply. Set rates (%) per supplier above. Set airfares in the ✈ Air Ticket section.';
     card.appendChild(sub);
 
-    if (tChildAgeRules.length === 0) {
-      const empty = document.createElement('div');
-      empty.style.cssText = 'font-size:12px;color:var(--text2);font-style:italic;padding:8px 0';
-      empty.textContent = 'No child age bands defined — click ＋ Add Band to add one.';
-      card.appendChild(empty);
-    } else {
-      tChildAgeRules.forEach((rule, i) => {
-        const row = document.createElement('div');
-        row.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px';
-
-        const labelInp = document.createElement('input');
-        labelInp.className = 'form-input'; labelInp.type = 'text';
-        labelInp.placeholder = 'e.g. Infant (0-2y)';
-        labelInp.style.cssText = 'flex:1;font-size:13px';
-        labelInp.value = rule.label || '';
-        labelInp.addEventListener('input', function() {
-          tChildAgeRules[i].label = this.value;
-          // Update supplier card band labels live
-          tSelectedSuppliers.forEach(sn => {
-            const safeName = sn.replace(/[^a-zA-Z0-9]/g, '_');
-            const lblEl = document.querySelector('.grp-child-pv-' + safeName + '_' + i);
-            if (lblEl && lblEl.previousElementSibling) {
-              // the band label span is before the pct wrap
-            }
-          });
-          tRenderSupplierRates();
-        });
-
-        const rmBtn = document.createElement('button');
-        rmBtn.className = 'btn btn-danger btn-sm';
-        rmBtn.style.cssText = 'padding:4px 8px;font-size:12px;flex-shrink:0';
-        rmBtn.textContent = '✕';
-        rmBtn.addEventListener('click', () => tRemoveChildAgeBand(i));
-
-        row.appendChild(labelInp); row.appendChild(rmBtn);
-        card.appendChild(row);
-      });
-    }
+    const chipsWrap = document.createElement('div');
+    chipsWrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px';
+    CHILD_TYPES.forEach(ct => {
+      const selected = tChildAgeRules.some(r => r.type === ct.id);
+      const chip = document.createElement('div');
+      chip.style.cssText = `padding:7px 16px;border-radius:20px;cursor:pointer;font-size:13px;font-weight:600;
+        border:1px solid ${selected ? 'var(--blue)' : 'var(--border)'};
+        background:${selected ? 'rgba(99,102,241,0.12)' : 'var(--surface2)'};
+        color:${selected ? 'var(--blue)' : 'var(--text2)'};
+        transition:all 0.15s;user-select:none`;
+      chip.textContent = ct.label;
+      chip.addEventListener('click', () => tToggleChildType(ct.id));
+      chipsWrap.appendChild(chip);
+    });
+    card.appendChild(chipsWrap);
 
     el.innerHTML = ''; el.appendChild(card);
     return;
@@ -9671,7 +9653,7 @@ function confirmJoinGroupTour() {
   (g.childAgeRules || []).forEach((rule, i) => {
     const count = parseInt(document.getElementById('jgrp-child-' + i)?.value) || 0;
     if (!count) return;
-    const type        = 'pkgage' + i;
+    const type        = rule.type || ('pkgage' + i); // prefer CHILD_TYPE id (e.g. 'infant'), fallback to legacy
     const adultTicket = g.withTicket ? (g.ticketPrice || 0) : 0;
     // Child airfare: explicit override stored on rule, else same as adult
     const childTicket = g.withTicket
