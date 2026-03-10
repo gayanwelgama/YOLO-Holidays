@@ -3018,17 +3018,21 @@ function showView_direct(v) {
 // BOOKINGS
 // ─────────────────────────────────────────────
 function buildDestCityChips(cityNights, dest) {
+  const chipStyle = 'display:inline-block;background:rgba(99,102,241,0.12);color:var(--blue);border:1px solid rgba(99,102,241,0.25);border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600;margin:1px 2px;white-space:nowrap';
   if (cityNights && cityNights.length > 0) {
     return cityNights.map(c =>
-      `<span style="display:inline-block;background:rgba(99,102,241,0.12);color:var(--blue);border:1px solid rgba(99,102,241,0.25);border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600;margin:1px 2px;white-space:nowrap">📍 ${c.city||c}</span>`
+      `<span style="${chipStyle}">📍 ${c.city||c}</span>`
     ).join('');
   }
-  // Fallback: split dest string by ' + ' separator (format used in existing bookings)
+  // Fallback: split dest string by '+' (format used in existing bookings: "Bangkok + Pattaya 5D4N")
+  // Filter out duration tokens like "5D4N" or "7D6N" which can appear at the end of tour descriptions
   if (dest) {
-    const cities = dest.split('+').map(c => c.trim()).filter(Boolean);
-    if (cities.length > 1) {
+    const cities = dest.split('+')
+      .map(c => c.trim())
+      .filter(c => c && !/^\d+[Dd]\d+[Nn]$/.test(c));
+    if (cities.length > 0) {
       return cities.map(c =>
-        `<span style="display:inline-block;background:rgba(99,102,241,0.12);color:var(--blue);border:1px solid rgba(99,102,241,0.25);border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600;margin:1px 2px;white-space:nowrap">📍 ${c}</span>`
+        `<span style="${chipStyle}">📍 ${c}</span>`
       ).join('');
     }
   }
@@ -6750,6 +6754,7 @@ function confirmDepositWithDates() {
       payNote: 'Invoice ' + inv.id,
       dmc: '', dmcAdvance: '', dmcFull: '',
       childCategories: inv.childCategories ? JSON.parse(JSON.stringify(inv.childCategories)) : [],
+      cityNights: inv.cityNights ? JSON.parse(JSON.stringify(inv.cityNights)) : [],
       tickets: false, prepared: false, sent: false,
       checkin: false, arrival: false,
       departed: false, returned: false,
@@ -9427,7 +9432,8 @@ function confirmBookFromPackage() {
     total, deposit, balance,
     travelDate, createdDate: new Date().toISOString().split('T')[0],
     depositPaid: false, balancePaid: false, status: 'unpaid',
-    tourPackageId: p.id
+    tourPackageId: p.id,
+    cityNights: JSON.parse(JSON.stringify(p.cityNights || []))
   };
 
   invoices.unshift(inv);
@@ -9645,7 +9651,8 @@ function confirmJoinGroupTour() {
     balanceDueDate: g.fullPayDue||'',
     createdDate: today,
     depositPaid: false, balancePaid: false, status: 'unpaid',
-    groupTourId: g.id
+    groupTourId: g.id,
+    cityNights: JSON.parse(JSON.stringify(g.cityNights || []))
   };
 
   invoices.unshift(inv);
@@ -10084,8 +10091,9 @@ function onSupplierTypeChange() {
   const type = document.getElementById('sup-type').value;
   const citiesSection = document.getElementById('sup-cities-section');
   const servicesSection = document.getElementById('sup-services-section');
+  // DMC → cities; all other types (Airline, Ticketing Agent, Courier, Other) → services
   if (citiesSection) citiesSection.style.display = (type === 'DMC') ? 'block' : 'none';
-  if (servicesSection) servicesSection.style.display = (type !== 'DMC' && type !== 'Airline') ? 'block' : 'none';
+  if (servicesSection) servicesSection.style.display = (type !== 'DMC') ? 'block' : 'none';
 }
 
 function renderSupplierCities() {
