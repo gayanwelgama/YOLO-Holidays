@@ -9,7 +9,6 @@ export default async (req) => {
 
   try {
     if (req.method === "GET") {
-      // Lookup by mobile (for phone-match feature)
       if (mobile) {
         const norm = normaliseMobile(mobile);
         const rows = await sql`SELECT * FROM customers`;
@@ -28,19 +27,21 @@ export default async (req) => {
 
     if (req.method === "POST") {
       const c = await req.json();
-      // Upsert by mobile — if exists update name, else insert
-      const norm = normaliseMobile(c.mobile);
       const existing = await sql`SELECT id FROM customers WHERE mobile = ${c.mobile}`;
       if (existing.length) {
-        // Update name if it was blank
-        await sql`UPDATE customers SET name = COALESCE(NULLIF(name,''), ${c.name||''}) WHERE mobile = ${c.mobile}`;
+        await sql`UPDATE customers SET
+          name      = COALESCE(NULLIF(name,''), ${c.name||''}),
+          address   = COALESCE(NULLIF(address,''), ${c.address||''}),
+          city      = COALESCE(NULLIF(city,''), ${c.city||''})
+        WHERE mobile = ${c.mobile}`;
         return Response.json({ ok: true, id: existing[0].id, updated: true });
       }
       await sql`
-        INSERT INTO customers (id, name, mobile, city, email, notes, source, created_date)
+        INSERT INTO customers (id, name, mobile, address, city, email, notes, corporate, source, created_date)
         VALUES (
           ${c.id}, ${c.name||''}, ${c.mobile||''},
-          ${c.city||''}, ${c.email||''}, ${c.notes||''},
+          ${c.address||''}, ${c.city||''}, ${c.email||''}, ${c.notes||''},
+          ${c.corporate ? true : false},
           ${c.source||'auto'},
           ${c.createdDate||new Date().toISOString().split('T')[0]}
         )
@@ -53,11 +54,13 @@ export default async (req) => {
       const c = await req.json();
       await sql`
         UPDATE customers SET
-          name         = ${c.name||''},
-          mobile       = ${c.mobile||''},
-          city         = ${c.city||''},
-          email        = ${c.email||''},
-          notes        = ${c.notes||''}
+          name      = ${c.name||''},
+          mobile    = ${c.mobile||''},
+          address   = ${c.address||''},
+          city      = ${c.city||''},
+          email     = ${c.email||''},
+          notes     = ${c.notes||''},
+          corporate = ${c.corporate ? true : false}
         WHERE id = ${id}
       `;
       return Response.json({ ok: true });
@@ -86,9 +89,11 @@ function dbToCustomer(r) {
     id: r.id,
     name: r.name,
     mobile: r.mobile,
-    city: r.city,
+    address: r.address || '',
+    city: r.city || '',
     email: r.email,
     notes: r.notes,
+    corporate: r.corporate || false,
     source: r.source,
     createdDate: r.created_date,
   };

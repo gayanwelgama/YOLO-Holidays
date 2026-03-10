@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "YOLO Holidays",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["netlify", "dev", "--port", "9000"],
+      "port": 9000
+    }
+  ]
+}
