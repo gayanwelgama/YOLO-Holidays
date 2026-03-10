@@ -3017,17 +3017,18 @@ function showView_direct(v) {
 // ─────────────────────────────────────────────
 // BOOKINGS
 // ─────────────────────────────────────────────
-function buildDestCityChips(cityNights, dest) {
+function buildDestCityChips(cityNights, dest, tour) {
   const chipStyle = 'display:inline-block;background:rgba(99,102,241,0.12);color:var(--blue);border:1px solid rgba(99,102,241,0.25);border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600;margin:1px 2px;white-space:nowrap';
+  // Priority 1: cityNights array — most reliable, shows only clean city names
   if (cityNights && cityNights.length > 0) {
     return cityNights.map(c =>
       `<span style="${chipStyle}">📍 ${c.city||c}</span>`
     ).join('');
   }
-  // Fallback: split dest string by '+' (format used in existing bookings: "Bangkok + Pattaya 5D4N")
-  // Filter out duration tokens like "5D4N" or "7D6N" which can appear at the end of tour descriptions
-  if (dest) {
-    const cities = dest.split('+')
+  // Priority 2: tour description field (auto-generated format: "Bangkok + Pattaya 7D6N")
+  // Uses '+' separator reliably; strip trailing duration token (e.g. "7D6N")
+  if (tour) {
+    const cities = tour.split('+')
       .map(c => c.trim())
       .filter(c => c && !/^\d+[Dd]\d+[Nn]$/.test(c));
     if (cities.length > 0) {
@@ -3036,6 +3037,7 @@ function buildDestCityChips(cityNights, dest) {
       ).join('');
     }
   }
+  // Priority 3: plain badge using dest (unstructured free text — don't try to parse it)
   return `<span class="badge badge-purple">🌏 ${dest||'—'}</span>`;
 }
 
@@ -3313,7 +3315,7 @@ function renderBookings() {
         <div class="customer-name">${g.name}</div>
         <div class="customer-mobile" style="color:var(--teal)">${gInvs.length} participant${gInvs.length!==1?'s':''}</div>
       </td>
-      <td>${buildDestCityChips(g.cityNights, g.dest)}</td>
+      <td>${buildDestCityChips(g.cityNights, g.dest, g.tour)}</td>
       <td style="font-size:12.5px">${depStr}</td>
       <td style="text-align:center"><span class="badge badge-gray">👥 ${totalPax}${g.maxPax?' / '+g.maxPax:''}</span></td>
       <td><span class="badge ${payCls}">${payLabel}</span></td>
@@ -3345,7 +3347,7 @@ function renderBookings() {
         <div class="customer-name">${b.name}</div>
         <div class="customer-mobile">${b.mobile}</div>
       </td>
-      <td>${buildDestCityChips(b.cityNights, b.dest)}</td>
+      <td>${buildDestCityChips(b.cityNights, b.dest, b.tour)}</td>
       <td style="font-size:12.5px">${b.departureDate ? new Date(b.departureDate).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : b.date}</td>
       <td style="text-align:center"><span class="badge badge-gray">👥 ${b.pax}</span></td>
       <td><span class="badge ${ps.cls}">${ps.label}</span></td>
@@ -6744,6 +6746,7 @@ function confirmDepositWithDates() {
       mobile: inv.mobile || '',
       pax: inv.pax || 1,
       dest: inv.dest || inv.tour || '',
+      tour: inv.tour || '',
       airline: inv.airline || '',
       date: travelDisplay,
       departureDate: departureDate || '',
