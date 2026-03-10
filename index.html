@@ -3026,11 +3026,11 @@ function buildDestCityChips(cityNights, dest, tour) {
     ).join('');
   }
   // Priority 2: tour description field (auto-generated format: "Bangkok + Pattaya 7D6N")
-  // Uses '+' separator reliably; strip trailing duration token (e.g. "7D6N")
+  // Split by '+', then strip any trailing duration suffix (e.g. "Pattaya 7D6N" → "Pattaya")
   if (tour) {
     const cities = tour.split('+')
-      .map(c => c.trim())
-      .filter(c => c && !/^\d+[Dd]\d+[Nn]$/.test(c));
+      .map(c => c.trim().replace(/\s*\d+[Dd]\d+[Nn]\s*$/, '').trim())
+      .filter(Boolean);
     if (cities.length > 0) {
       return cities.map(c =>
         `<span style="${chipStyle}">📍 ${c}</span>`
@@ -6336,7 +6336,9 @@ function confirmCreateInvoice() {
   const inv = {
     id: invNum, quoteId: qid,
     name: q.name, mobile: q.mobile || '',
-    tour: q.tour, airline: q.airline || '',
+    tour: q.tour, dest: q.dest || '',
+    cityNights: q.cityNights ? JSON.parse(JSON.stringify(q.cityNights)) : [],
+    airline: q.airline || '',
     hotels: q.hotels || '', inclusions: q.inclusions || [],
     pax: q.pax, pricePerPax: q.pricePerPax,
     childCategories: q.childCategories ? JSON.parse(JSON.stringify(q.childCategories)) : [],
