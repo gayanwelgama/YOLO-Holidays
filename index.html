@@ -9685,16 +9685,16 @@ window.addEventListener('load', async function() {
 
   try {
     loadMsg.textContent = 'Loading bookings…';
-    bookings = await apiGet('/api/bookings');
+    bookings = await apiGet('/api/bookings').catch(() => []);
 
     loadMsg.textContent = 'Loading quotes…';
-    quotes = await apiGet('/api/quotes');
+    quotes = await apiGet('/api/quotes').catch(() => []);
 
     loadMsg.textContent = 'Loading invoices…';
-    invoices = await apiGet('/api/invoices');
+    invoices = await apiGet('/api/invoices').catch(() => []);
 
     loadMsg.textContent = 'Loading customers…';
-    customers = await apiGet('/api/customers');
+    customers = await apiGet('/api/customers').catch(() => []);
 
     loadMsg.textContent = 'Loading suppliers…';
     suppliers = await apiGet('/api/suppliers').catch(() => []);
@@ -10055,7 +10055,7 @@ async function saveSupplier() {
     paymentNotes: document.getElementById('sup-payment-notes').value.trim(),
     notes: document.getElementById('sup-notes').value.trim(),
     cities: type === 'DMC' ? supplierCitiesState : [],
-    services: type !== 'DMC' && type !== 'Airline' ? supplierServicesState : [],
+    services: type !== 'DMC' ? supplierServicesState : [],
   };
   if (editingSupplierId) {
     const idx = suppliers.findIndex(x => x.id === editingSupplierId);
