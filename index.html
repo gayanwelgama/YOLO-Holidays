@@ -3023,6 +3023,15 @@ function buildDestCityChips(cityNights, dest) {
       `<span style="display:inline-block;background:rgba(99,102,241,0.12);color:var(--blue);border:1px solid rgba(99,102,241,0.25);border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600;margin:1px 2px;white-space:nowrap">📍 ${c.city||c}</span>`
     ).join('');
   }
+  // Fallback: split dest string by ' + ' separator (format used in existing bookings)
+  if (dest) {
+    const cities = dest.split('+').map(c => c.trim()).filter(Boolean);
+    if (cities.length > 1) {
+      return cities.map(c =>
+        `<span style="display:inline-block;background:rgba(99,102,241,0.12);color:var(--blue);border:1px solid rgba(99,102,241,0.25);border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600;margin:1px 2px;white-space:nowrap">📍 ${c}</span>`
+      ).join('');
+    }
+  }
   return `<span class="badge badge-purple">🌏 ${dest||'—'}</span>`;
 }
 
@@ -8942,28 +8951,42 @@ function tCalcTotal() {
     });
     html += '</tbody></table>';
 
-    // Child pricing preview (per-supplier %, couple/pax_2 basis)
+    // Child pricing preview — per-pax-count grid (child % is fixed, but LKR varies with adult group size)
     if (tChildAgeRules.length > 0 && tSelectedSuppliers.length > 0) {
-      if (fees > 0 || ticketPrice > 0 || tSelectedSuppliers.some(n => (tSupplierRatesMap[n]?.pax_2||0) > 0)) {
+      const hasAnyChildRate = tChildAgeRules.some(rule =>
+        tSelectedSuppliers.some(sn => {
+          const r = tSupplierRatesMap[sn];
+          const cpObj = (r?.childPcts && typeof r.childPcts === 'object' && !Array.isArray(r.childPcts)) ? r.childPcts : {};
+          return (cpObj[rule.type] || 0) > 0;
+        })
+      );
+      if (hasAnyChildRate || fees > 0 || ticketPrice > 0) {
         html += '<div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px">';
-        html += '<div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);font-weight:600;margin-bottom:8px">👶 Child Rates (Couple basis) — fees same as adult</div>';
+        html += '<div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);font-weight:600;margin-bottom:8px">👶 Child Rates — % of adult rate per group size (fees same as adult)</div>';
         tChildAgeRules.forEach(rule => {
           const typeId = rule.type;
-          const childSup = tSelectedSuppliers.reduce((s, sn) => {
-            const r = tSupplierRatesMap[sn];
-            if (!r) return s;
-            const cpObj = (r.childPcts && typeof r.childPcts === 'object' && !Array.isArray(r.childPcts)) ? r.childPcts : {};
-            const p = cpObj[typeId] !== undefined ? cpObj[typeId] : 0;
-            return s + Math.round((parseInt(r.pax_2)||0) * p / 100);
-          }, 0);
           const childTicket = withTicket ? ((rule.airfare !== undefined && rule.airfare !== '' && rule.airfare !== null) ? (parseInt(rule.airfare)||0) : ticketPrice) : 0;
-          const childTotal  = childSup + fees + childTicket + profit;
-          const airfareSuffix = (rule.airfare !== undefined && rule.airfare !== '') ? ` · ✈ LKR ${(parseInt(rule.airfare)||0).toLocaleString()}` : ` · ✈ same as adult`;
-          const isFree = childTotal === 0 || (childSup === 0 && fees === 0 && childTicket === 0 && profit === 0);
-          html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.05)">`;
-          html += `<span style="font-size:12px;color:var(--text)">${rule.label}${withTicket ? `<span style="color:var(--text2);font-size:11px"> ${airfareSuffix}</span>` : ''}</span>`;
-          html += `<span style="font-size:13px;font-weight:600;color:var(--teal);font-family:'DM Mono',monospace">${isFree ? 'Free' : 'LKR '+childTotal.toLocaleString()}</span>`;
-          html += '</div>';
+          const airfareNote = withTicket ? (rule.airfare !== undefined && rule.airfare !== '' ? ` · ✈ LKR ${(parseInt(rule.airfare)||0).toLocaleString()}` : ' · ✈ same as adult') : '';
+          html += `<div style="margin-bottom:10px">`;
+          html += `<div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:5px">${rule.label}<span style="color:var(--text2);font-size:11px">${airfareNote}</span></div>`;
+          html += '<div style="display:flex;flex-wrap:wrap;gap:4px">';
+          PKG_PAX_LABELS.forEach(pl => {
+            const key = 'pax_' + pl.pax;
+            const childSup = tSelectedSuppliers.reduce((s, sn) => {
+              const r = tSupplierRatesMap[sn];
+              if (!r) return s;
+              const cpObj = (r.childPcts && typeof r.childPcts === 'object' && !Array.isArray(r.childPcts)) ? r.childPcts : {};
+              const p = cpObj[typeId] !== undefined ? cpObj[typeId] : 0;
+              return s + Math.round((parseInt(r[key])||0) * p / 100);
+            }, 0);
+            const childTotal = childSup + fees + childTicket + profit;
+            const isFree = childTotal === 0;
+            html += `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;text-align:center;min-width:56px">`;
+            html += `<div style="font-size:9px;text-transform:uppercase;color:var(--text2);letter-spacing:0.5px">${pl.label}</div>`;
+            html += `<div style="font-size:11px;font-weight:700;color:${isFree?'var(--text2)':'var(--teal)'};font-family:'DM Mono',monospace">${isFree ? 'Free' : 'LKR '+childTotal.toLocaleString()}</div>`;
+            html += '</div>';
+          });
+          html += '</div></div>';
         });
         html += '</div>';
       }
