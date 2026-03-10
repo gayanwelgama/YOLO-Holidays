@@ -25,7 +25,8 @@ export default async (req) => {
           inclusions, child_categories, pax, price_per_pax, total,
           deposit, balance, within30, travel_date, balance_due_date,
           estimated_profit, deposit_paid, balance_paid, status,
-          travel_start_date, return_date, merged_into_booking, created_date
+          travel_start_date, return_date, merged_into_booking, created_date,
+          group_tour_id, tour_package_id, city_nights
         ) VALUES (
           ${inv.id}, ${inv.quoteId||''}, ${inv.name}, ${inv.mobile||''},
           ${inv.tour||''}, ${inv.airline||''}, ${inv.hotels||''},
@@ -39,7 +40,9 @@ export default async (req) => {
           ${inv.status||'unpaid'},
           ${inv.travelDate||''}, ${inv.returnDate||''},
           ${inv.mergedIntoBooking||''},
-          ${inv.createdDate||new Date().toISOString().split('T')[0]}
+          ${inv.createdDate||new Date().toISOString().split('T')[0]},
+          ${inv.groupTourId||''}, ${inv.tourPackageId||''},
+          ${JSON.stringify(inv.cityNights||[])}
         )
       `;
       return Response.json({ ok: true, id: inv.id }, { status: 201 });
@@ -72,7 +75,10 @@ export default async (req) => {
           status               = ${inv.status||'unpaid'},
           travel_start_date    = ${inv.travelDate||''},
           return_date          = ${inv.returnDate||''},
-          merged_into_booking  = ${inv.mergedIntoBooking||''}
+          merged_into_booking  = ${inv.mergedIntoBooking||''},
+          group_tour_id        = ${inv.groupTourId||''},
+          tour_package_id      = ${inv.tourPackageId||''},
+          city_nights          = ${JSON.stringify(inv.cityNights||[])}
         WHERE id = ${id}
       `;
       return Response.json({ ok: true });
@@ -118,6 +124,9 @@ function dbToInvoice(r) {
     returnDate: r.return_date,
     mergedIntoBooking: r.merged_into_booking,
     createdDate: r.created_date,
+    groupTourId: r.group_tour_id || '',
+    tourPackageId: r.tour_package_id || '',
+    cityNights: r.city_nights || [],
   };
 }
 

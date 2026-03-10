@@ -33,7 +33,7 @@ export default async (req) => {
           ${q.ticketPrice||0}, ${q.withTicket!==false},
           ${JSON.stringify(q.inclusions||[])},
           ${JSON.stringify(q.childCategories||[])},
-          ${JSON.stringify(q.cities||[])},
+          ${JSON.stringify(q.cityNights||q.cities||[])},
           ${JSON.stringify(q.airlines||[])},
           ${q.createdDate||q.date||new Date().toISOString().split('T')[0]}
         )
@@ -64,7 +64,7 @@ export default async (req) => {
           with_ticket      = ${q.withTicket!==false},
           inclusions       = ${JSON.stringify(q.inclusions||[])},
           child_categories = ${JSON.stringify(q.childCategories||[])},
-          cities           = ${JSON.stringify(q.cities||[])},
+          cities           = ${JSON.stringify(q.cityNights||q.cities||[])},
           airlines         = ${JSON.stringify(q.airlines||[])}
         WHERE id = ${id}
       `;
@@ -106,7 +106,7 @@ function dbToQuote(r) {
     withTicket: r.with_ticket,
     inclusions: r.inclusions || [],
     childCategories: r.child_categories || [],
-    cities: r.cities || [],
+    cityNights: r.cities || [],
     airlines: r.airlines || [],
     createdDate: r.created_date,
   };

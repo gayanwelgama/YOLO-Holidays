@@ -119,6 +119,60 @@ await sql`
     created_at TIMESTAMPTZ DEFAULT NOW()
   )
 `;
+await sql`
+  CREATE TABLE IF NOT EXISTS suppliers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL DEFAULT '',
+    type TEXT DEFAULT 'DMC',
+    contact_person TEXT DEFAULT '',
+    phone TEXT DEFAULT '',
+    email TEXT DEFAULT '',
+    bank_name TEXT DEFAULT '',
+    bank_account TEXT DEFAULT '',
+    bank_branch TEXT DEFAULT '',
+    payment_notes TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
+    cities JSONB DEFAULT '[]',
+    created_date TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )
+`;
+await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS cities JSONB DEFAULT '[]'`;
+await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS services JSONB DEFAULT '[]'`;
+await sql`ALTER TABLE customers ADD COLUMN IF NOT EXISTS address TEXT DEFAULT ''`;
+await sql`ALTER TABLE customers ADD COLUMN IF NOT EXISTS corporate BOOLEAN DEFAULT false`;
+await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS supplier_payments JSONB DEFAULT '{}'`;
+await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS group_tour_id TEXT DEFAULT ''`;
+await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS tour_package_id TEXT DEFAULT ''`;
+await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS city_nights JSONB DEFAULT '[]'`;
+await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS group_tour_id TEXT DEFAULT ''`;
+await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS tour_package_id TEXT DEFAULT ''`;
+await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS tour TEXT DEFAULT ''`;
+await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS city_nights JSONB DEFAULT '[]'`;
+await sql`
+  CREATE TABLE IF NOT EXISTS group_tours (
+    id TEXT PRIMARY KEY,
+    data JSONB NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  )
+`;
+await sql`
+  CREATE TABLE IF NOT EXISTS tour_packages (
+    id TEXT PRIMARY KEY,
+    data JSONB NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  )
+`;
+await sql`
+  CREATE TABLE IF NOT EXISTS ledger (
+    id TEXT PRIMARY KEY,
+    data JSONB NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  )
+`;
 console.log("✅ Tables ready.");
 
 // Seed only if empty
@@ -158,5 +212,8 @@ await sql`INSERT INTO customers (id,name,mobile,city,email,notes,source,created_
 await sql`INSERT INTO customers (id,name,mobile,city,email,notes,source,created_date) VALUES ('CUS4132','Tharanga Wickramasinghe','0722334455','','','','auto','2026-03-04') ON CONFLICT (id) DO NOTHING`;
 await sql`INSERT INTO customers (id,name,mobile,city,email,notes,source,created_date) VALUES ('CUS4131','Priya Seneviratne','0703219876','','','','auto','2026-02-20') ON CONFLICT (id) DO NOTHING`;
 console.log("  ✅ 5 customers");
+
+await sql`INSERT INTO suppliers (id,name,type,contact_person,phone,email,bank_name,bank_account,bank_branch,payment_notes,notes,created_date) VALUES ('SUP001','D&G Thailand','DMC','D&G Agent','','','Bangkok Bank','','','Pay in THB via wire transfer','Main DMC partner for Thailand packages','2026-01-01') ON CONFLICT (id) DO NOTHING`;
+console.log("  ✅ 1 supplier");
 
 console.log("🎉 Database ready!");

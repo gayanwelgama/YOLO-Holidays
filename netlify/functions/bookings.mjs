@@ -30,7 +30,8 @@ export default async (req) => {
           actual_delivery_cost, actual_extra_cost, actual_extra_note,
           estimated_profit, tickets, dmc_advance_paid, dmc_full_paid,
           prepared, sent, checkin, arrival, departed, returned, cancelled,
-          child_categories, merged_invoices, remarks, created_date
+          child_categories, merged_invoices, remarks, created_date, supplier_payments,
+          group_tour_id, tour_package_id, tour, city_nights
         ) VALUES (
           ${b.id}, ${b.invoiceId||''}, ${b.name}, ${b.mobile||''},
           ${b.pax||1}, ${b.dest||''}, ${b.airline||''}, ${b.date||''},
@@ -47,7 +48,10 @@ export default async (req) => {
           ${b.cancelled||false},
           ${JSON.stringify(b.childCategories||[])},
           ${JSON.stringify(b.mergedInvoices||[])},
-          ${b.remarks||''}, ${b.createdDate||new Date().toISOString().split('T')[0]}
+          ${b.remarks||''}, ${b.createdDate||new Date().toISOString().split('T')[0]},
+          ${JSON.stringify(b.supplierPayments||{})},
+          ${b.groupTourId||''}, ${b.tourPackageId||''},
+          ${b.tour||''}, ${JSON.stringify(b.cityNights||[])}
         )
       `;
       return Response.json({ ok: true, id: b.id }, { status: 201 });
@@ -94,9 +98,14 @@ export default async (req) => {
           departed           = ${b.departed||false},
           returned           = ${b.returned||false},
           cancelled          = ${b.cancelled||false},
-          child_categories   = ${JSON.stringify(b.childCategories||[])},
-          merged_invoices    = ${JSON.stringify(b.mergedInvoices||[])},
-          remarks            = ${b.remarks||''}
+          child_categories    = ${JSON.stringify(b.childCategories||[])},
+          merged_invoices     = ${JSON.stringify(b.mergedInvoices||[])},
+          remarks             = ${b.remarks||''},
+          supplier_payments   = ${JSON.stringify(b.supplierPayments||{})},
+          group_tour_id       = ${b.groupTourId||''},
+          tour_package_id     = ${b.tourPackageId||''},
+          tour                = ${b.tour||''},
+          city_nights         = ${JSON.stringify(b.cityNights||[])}
         WHERE id = ${id}
       `;
       return Response.json({ ok: true });
@@ -159,6 +168,11 @@ function dbToBooking(r) {
     mergedInvoices: r.merged_invoices || [],
     remarks: r.remarks,
     createdDate: r.created_date,
+    supplierPayments: r.supplier_payments || {},
+    groupTourId: r.group_tour_id || '',
+    tourPackageId: r.tour_package_id || '',
+    tour: r.tour || '',
+    cityNights: r.city_nights || [],
   };
 }
 
