@@ -149,6 +149,29 @@ await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS group_tour_id TEXT DEFAU
 await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS tour_package_id TEXT DEFAULT ''`;
 await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS tour TEXT DEFAULT ''`;
 await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS city_nights JSONB DEFAULT '[]'`;
+
+// ── Quotes: persist customer & supplier details ──
+await sql`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS address TEXT DEFAULT ''`;
+await sql`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS city TEXT DEFAULT ''`;
+await sql`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS corporate BOOLEAN DEFAULT false`;
+await sql`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS dmc TEXT DEFAULT ''`;
+await sql`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS supplier_charges JSONB DEFAULT '{}'`;
+await sql`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS supplier_rates JSONB DEFAULT '{}'`;
+
+// ── Invoices: persist financial breakdown, supplier data, payments ──
+await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS dest TEXT DEFAULT ''`;
+await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS charges INT DEFAULT 0`;
+await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS profit INT DEFAULT 0`;
+await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS ticket_price INT DEFAULT 0`;
+await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS with_ticket BOOLEAN DEFAULT false`;
+await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS dmc_rate INT DEFAULT 0`;
+await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS dmc TEXT DEFAULT ''`;
+await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS supplier_charges JSONB DEFAULT '{}'`;
+await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS supplier_rates JSONB DEFAULT '{}'`;
+await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS payments JSONB DEFAULT '[]'`;
+await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS deposit_date TEXT DEFAULT ''`;
+await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS deposit_ts TEXT DEFAULT ''`;
+
 await sql`
   CREATE TABLE IF NOT EXISTS group_tours (
     id TEXT PRIMARY KEY,

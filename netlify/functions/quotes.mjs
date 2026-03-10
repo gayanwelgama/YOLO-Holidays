@@ -23,7 +23,8 @@ export default async (req) => {
         INSERT INTO quotes (
           id, name, mobile, pax, price_per_pax, total, tour, airline, hotels,
           date, status, notes, dmc_rate, charges, profit, ticket_price, with_ticket,
-          inclusions, child_categories, cities, airlines, created_date
+          inclusions, child_categories, cities, airlines, created_date,
+          address, city, corporate, dmc, supplier_charges, supplier_rates
         ) VALUES (
           ${q.id}, ${q.name}, ${q.mobile||''}, ${q.pax||1},
           ${q.pricePerPax||0}, ${q.total||0}, ${q.tour||''},
@@ -35,7 +36,10 @@ export default async (req) => {
           ${JSON.stringify(q.childCategories||[])},
           ${JSON.stringify(q.cityNights||q.cities||[])},
           ${JSON.stringify(q.airlines||[])},
-          ${q.createdDate||q.date||new Date().toISOString().split('T')[0]}
+          ${q.createdDate||q.date||new Date().toISOString().split('T')[0]},
+          ${q.address||''}, ${q.city||''}, ${q.corporate||false},
+          ${q.dmc||''}, ${JSON.stringify(q.supplierCharges||{})},
+          ${JSON.stringify(q.supplierRates||{})}
         )
       `;
       return Response.json({ ok: true, id: q.id }, { status: 201 });
@@ -65,7 +69,13 @@ export default async (req) => {
           inclusions       = ${JSON.stringify(q.inclusions||[])},
           child_categories = ${JSON.stringify(q.childCategories||[])},
           cities           = ${JSON.stringify(q.cityNights||q.cities||[])},
-          airlines         = ${JSON.stringify(q.airlines||[])}
+          airlines         = ${JSON.stringify(q.airlines||[])},
+          address          = ${q.address||''},
+          city             = ${q.city||''},
+          corporate        = ${q.corporate||false},
+          dmc              = ${q.dmc||''},
+          supplier_charges = ${JSON.stringify(q.supplierCharges||{})},
+          supplier_rates   = ${JSON.stringify(q.supplierRates||{})}
         WHERE id = ${id}
       `;
       return Response.json({ ok: true });
@@ -109,6 +119,12 @@ function dbToQuote(r) {
     cityNights: r.cities || [],
     airlines: r.airlines || [],
     createdDate: r.created_date,
+    address: r.address || '',
+    city: r.city || '',
+    corporate: r.corporate || false,
+    dmc: r.dmc || '',
+    supplierCharges: r.supplier_charges || {},
+    supplierRates: r.supplier_rates || {},
   };
 }
 

@@ -2399,14 +2399,27 @@ function toggleStatCard(key) {
 let checklistState = { tickets: false, prepared: false, sent: false, checkin: false, arrival: false, departed: false, returned: false };
 
 function generateId() {
-  // Standalone booking (no quote) — use next quote number as base
-  const nums = quotes.map(q => parseInt(q.id.replace('Q',''))).filter(n => !isNaN(n));
-  const next = nums.length ? Math.max(...nums) + 1 : 4136;
+  // Generate next available ID — scans quotes, invoices AND bookings to avoid collisions
+  const extractNum = id => parseInt(String(id).replace(/^[A-Za-z\-]+/, '')) || 0;
+  const qNums = quotes.map(q => extractNum(q.id));
+  const iNums = invoices.map(i => extractNum(i.id));
+  const bNums = bookings.map(b => extractNum(b.id));
+  const allNums = [...qNums, ...iNums, ...bNums].filter(n => n > 0);
+  const next = allNums.length ? Math.max(...allNums) + 1 : 4136;
   return 'YH' + next;
 }
 
 function bookingIdFromQuote(qid) {
-  return 'YH' + qid.replace('Q','');
+  // Extract the numeric portion from any ID format: Q4166, INV-4166, etc.
+  const num = qid.replace(/^[A-Za-z\-]+/, '');
+  return 'YH' + (num || qid);
+}
+
+// Total travellers = adults + all children across age categories
+function totalPax(item) {
+  const adults = item.pax || 0;
+  const children = (item.childCategories || []).reduce((s, c) => s + (parseInt(c.count) || 0), 0);
+  return adults + children;
 }
 
 // ─────────────────────────────────────────────
@@ -2914,7 +2927,7 @@ function cpShowTab(tab) {
         <div>
           <span class="order-id" style="font-size:11px">${b.id}</span>
           <span style="font-size:13px;font-weight:600;margin-left:8px">${b.dest || '—'}</span>
-          <div style="font-size:11px;color:var(--text2);margin-top:2px">${b.airline || ''} · ${dep} · ${b.pax} pax</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px">${b.airline || ''} · ${dep} · ${totalPax(b)} pax</div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">${pay} ${st}</div>
       </div>`;
@@ -2930,7 +2943,7 @@ function cpShowTab(tab) {
         <div>
           <span class="order-id" style="font-size:11px">${q.id}</span>
           <span style="font-size:13px;font-weight:600;margin-left:8px">${q.tour || '—'}</span>
-          <div style="font-size:11px;color:var(--text2);margin-top:2px">Issued ${issued} · ${q.pax} pax · LKR ${(q.total||0).toLocaleString()}</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px">Issued ${issued} · ${totalPax(q)} pax · LKR ${(q.total||0).toLocaleString()}</div>
         </div>
         <span class="badge ${stCls}">${q.status||'draft'}</span>
       </div>`;
@@ -3297,7 +3310,7 @@ function renderBookings() {
   // Build group tour aggregate rows (always shown, no pagination)
   const groupTourHtml = activeGroupTours.map(g => {
     const gInvs    = invoices.filter(i => i.groupTourId === g.id);
-    const totalPax = gInvs.reduce((s, i) => s + (i.pax||0), 0);
+    const grpTotalPax = gInvs.reduce((s, i) => s + totalPax(i), 0);
     const allPaid  = gInvs.length > 0 && gInvs.every(i => i.balancePaid || i.status === 'paid');
     const anyPaid  = gInvs.some(i => i.depositPaid || i.balancePaid || i.status === 'paid');
     const payCls   = allPaid ? 'badge-green' : anyPaid ? 'badge-yellow' : 'badge-red';
@@ -3317,7 +3330,7 @@ function renderBookings() {
       </td>
       <td>${buildDestCityChips(g.cityNights, g.dest, g.tour)}</td>
       <td style="font-size:12.5px">${depStr}</td>
-      <td style="text-align:center"><span class="badge badge-gray">👥 ${totalPax}${g.maxPax?' / '+g.maxPax:''}</span></td>
+      <td style="text-align:center"><span class="badge badge-gray">👥 ${grpTotalPax}${g.maxPax?' / '+g.maxPax:''}</span></td>
       <td><span class="badge ${payCls}">${payLabel}</span></td>
       <td><span class="badge ${statusCls}">${statusLabel}</span></td>
       <td onclick="event.stopPropagation()">
@@ -3349,7 +3362,7 @@ function renderBookings() {
       </td>
       <td>${buildDestCityChips(b.cityNights, b.dest, b.tour)}</td>
       <td style="font-size:12.5px">${b.departureDate ? new Date(b.departureDate).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : b.date}</td>
-      <td style="text-align:center"><span class="badge badge-gray">👥 ${b.pax}</span></td>
+      <td style="text-align:center"><span class="badge badge-gray">👥 ${totalPax(b)}</span></td>
       <td><span class="badge ${ps.cls}">${ps.label}</span></td>
       <td><span class="badge ${st.cls}">${st.label}</span></td>
       <td onclick="event.stopPropagation()">
@@ -3489,7 +3502,7 @@ function buildAccordionInner(b) {
           ${depDisplay ? `<div><div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);font-weight:600;margin-bottom:2px">✈️ Departure</div><div style="font-size:13px;font-weight:600">${depDisplay}</div></div>` : ''}
           ${retDisplay ? `<div><div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);font-weight:600;margin-bottom:2px">🏠 Return</div><div style="font-size:13px;font-weight:600">${retDisplay}</div></div>` : ''}
           ${b.airline ? `<div><div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);font-weight:600;margin-bottom:2px">✈ Airline</div><div style="font-size:13px;font-weight:600">${b.airline}</div></div>` : ''}
-          ${b.pax ? `<div><div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);font-weight:600;margin-bottom:2px">👥 Pax</div><div style="font-size:13px;font-weight:600">${b.pax}</div></div>` : ''}
+          ${b.pax ? `<div><div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);font-weight:600;margin-bottom:2px">👥 Pax</div><div style="font-size:13px;font-weight:600">${totalPax(b)}</div></div>` : ''}
         </div>` : ''}
 
         <div class="accordion-section-title">🛫 Pre-Departure Checklist</div>
@@ -3602,9 +3615,12 @@ function buildGroupTourAccordionInner(g) {
     const cls     = isAuto ? 'auto-checked' : checked ? 'checked' : '';
     const onclick = isAuto ? '' : `onclick="toggleGroupTourCheck('${gId}','${field}')"`;
     const title   = isAuto ? `title="Auto-marked"` : '';
+    // Show recorded cost amount for payment fields (e.g. tickets)
+    const COST_KEYS = { tickets: 'actualTicketCost' };
+    const costAmt = COST_KEYS[field] && g[COST_KEYS[field]] ? ` <span style="font-size:10px;color:var(--green);margin-left:4px">[LKR ${parseInt(g[COST_KEYS[field]]).toLocaleString()}]</span>` : '';
     return `<div class="check-item ${cls}" ${onclick} ${title}>
       <div class="ci-box">${checked ? '<span class="ci-tick">✓</span>' : ''}</div>
-      <span>${emoji} ${label}${isAuto ? ' <span style="font-size:10px;opacity:0.6">(auto)</span>' : ''}</span>
+      <span>${emoji} ${label}${costAmt}${isAuto ? ' <span style="font-size:10px;opacity:0.6">(auto)</span>' : ''}</span>
     </div>`;
   }
 
@@ -3632,7 +3648,7 @@ function buildGroupTourAccordionInner(g) {
   }, 0);
 
   // Participant invoices list
-  const totalPax = gInvs.reduce((s, i) => s + (i.pax||0), 0);
+  const grpDetailPax = gInvs.reduce((s, i) => s + totalPax(i), 0);
   const participantRows = gInvs.length > 0
     ? gInvs.map(inv => {
         const isPaid   = inv.balancePaid || inv.status === 'paid';
@@ -3645,7 +3661,7 @@ function buildGroupTourAccordionInner(g) {
         return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border)">
           <div style="flex:1;min-width:0">
             <div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${inv.name}</div>
-            <div style="font-size:11px;color:var(--text2)">${inv.mobile||''} · ${inv.pax} adult${inv.pax!==1?'s':''}${childInfo?' · '+childInfo:''}</div>
+            <div style="font-size:11px;color:var(--text2)">${inv.mobile||''} · ${totalPax(inv)} pax${childInfo ? ' ('+inv.pax+' adult'+(inv.pax!==1?'s':'')+' · '+childInfo+')' : ''}</div>
           </div>
           <div style="text-align:right;flex-shrink:0">
             <span class="badge ${payCls}" style="font-size:11px">${payLbl}</span>
@@ -3669,7 +3685,7 @@ function buildGroupTourAccordionInner(g) {
           ${depDisplay ? `<div><div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);font-weight:600;margin-bottom:2px">✈️ Departure</div><div style="font-size:13px;font-weight:600">${depDisplay}</div></div>` : ''}
           ${retDisplay ? `<div><div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);font-weight:600;margin-bottom:2px">🏠 Return</div><div style="font-size:13px;font-weight:600">${retDisplay}</div></div>` : ''}
           ${g.airline ? `<div><div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);font-weight:600;margin-bottom:2px">✈ Airline</div><div style="font-size:13px;font-weight:600">${g.airline}</div></div>` : ''}
-          <div><div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);font-weight:600;margin-bottom:2px">👥 Pax</div><div style="font-size:13px;font-weight:600">${totalPax}${g.maxPax?' / '+g.maxPax:''}</div></div>
+          <div><div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);font-weight:600;margin-bottom:2px">👥 Pax</div><div style="font-size:13px;font-weight:600">${grpDetailPax}${g.maxPax?' / '+g.maxPax:''}</div></div>
         </div>` : ''}
 
         <div class="accordion-section-title">👥 Participants (${gInvs.length})</div>
@@ -3733,8 +3749,8 @@ function toggleGroupTourCheck(gId, field, supplierName, supplierQuotedTotal) {
 
     if (sp && sp.final != null) {
       // Fully settled — confirm clear
-      const totalPaid = (sp.advance||0) + (sp.final||0);
-      if (!confirm(`Clear all payments for "${supplierName}"?\n\nTotal paid: LKR ${totalPaid.toLocaleString()}`)) return;
+      const paid = (sp.advance||0) + (sp.final||0);
+      if (!confirm(`Clear all payments for "${supplierName}"?\n\nTotal paid: LKR ${paid.toLocaleString()}`)) return;
       delete g.supplierPayments[supplierName];
       const acc = document.getElementById('accordion-' + rowId);
       if (acc) acc.querySelector('td').innerHTML = buildGroupTourAccordionInner(g);
@@ -3754,7 +3770,41 @@ function toggleGroupTourCheck(gId, field, supplierName, supplierQuotedTotal) {
     return;
   }
 
-  // Simple boolean toggle (tickets, prepared, sent, checkin, arrival, departed, returned)
+  // ── Cost fields: air tickets — prompt for amount (same as regular bookings) ──
+  const gInvs = invoices.filter(i => i.groupTourId === gId);
+  const grpAllPax = gInvs.reduce((s, i) => s + totalPax(i), 0);
+  const GRP_COST_FIELDS = {
+    tickets: { costKey: 'actualTicketCost', label: 'Air Ticket Cost (LKR)', quotedVal: g.withTicket ? (g.ticketPrice||0) * grpAllPax : 0 }
+  };
+  const cf = GRP_COST_FIELDS[field];
+
+  if (cf && !g[field]) {
+    // Ticking ON a cost field → show cost prompt
+    openCostPromptForGroupTour(gId, field, cf.label, cf.quotedVal, null, null);
+    return;
+  }
+
+  if (cf && g[field]) {
+    // Ticking OFF a cost field → confirm and clear amount
+    const existingAmt = g[cf.costKey];
+    const amtStr = existingAmt ? ` (LKR ${parseInt(existingAmt).toLocaleString()})` : '';
+    if (!confirm(`Uncheck "${cf.label.replace(' (LKR)','')}${amtStr}"?\n\nThis will remove the recorded amount.`)) return;
+    g[field] = false;
+    g[cf.costKey] = 0;
+    const acc = document.getElementById('accordion-' + rowId);
+    if (acc) acc.querySelector('td').innerHTML = buildGroupTourAccordionInner(g);
+    dbSaveGroupTour(g);
+    showToast('🗑', `${field} cost cleared`);
+    return;
+  }
+
+  // ── Non-cost field toggle — confirm before unchecking ──
+  if (g[field]) {
+    // Currently checked → ask confirmation before unchecking
+    const LABELS = { prepared: 'Docs Prepared', sent: 'Package Sent', checkin: 'Check-in Done', arrival: 'Arrival Confirmed', departed: 'Departed', returned: 'Returned' };
+    const lbl = LABELS[field] || field;
+    if (!confirm(`Uncheck "${lbl}"?`)) return;
+  }
   g[field] = !g[field];
   const acc = document.getElementById('accordion-' + rowId);
   if (acc) acc.querySelector('td').innerHTML = buildGroupTourAccordionInner(g);
@@ -4150,7 +4200,12 @@ function toggleBookingCheck(id, field) {
     return;
   }
 
-  // Non-cost field toggle (no confirmation needed)
+  // Non-cost field toggle — confirm before unchecking
+  if (b[field]) {
+    const LABELS = { prepared: 'Docs Prepared', sent: 'Package Sent', checkin: 'Check-in Done', arrival: 'Arrival Confirmed', departed: 'Departed', returned: 'Returned' };
+    const lbl = LABELS[field] || field;
+    if (!confirm(`Uncheck "${lbl}"?`)) return;
+  }
   b[field] = !b[field];
   const accordion = document.getElementById('accordion-' + id);
   if (accordion) accordion.querySelector('td').innerHTML = buildAccordionInner(b);
@@ -4366,7 +4421,7 @@ function confirmCostPrompt() {
   const bookingId = document.getElementById('cost-prompt-bid').value;
   if (bookingId === '__merged__') { confirmMergedCostPrompt(); return; }
 
-  // Group tour supplier payment (bookingId = 'grp_{gId}')
+  // Group tour payment (bookingId = 'grp_{gId}')
   if (bookingId.startsWith('grp_')) {
     const gId = bookingId.slice(4);
     const g   = groupTours.find(x => x.id === gId);
@@ -4377,6 +4432,30 @@ function confirmCostPrompt() {
     const supplierName = document.getElementById('cost-prompt-supplier-name')?.value || '';
     const paymentType  = document.getElementById('cost-prompt-payment-type')?.value || 'full';
     const now          = new Date().toISOString();
+
+    // ── Non-supplier cost field (e.g. tickets) ──
+    if (!field.startsWith('sp_paid_') && !supplierName) {
+      const GRP_COST_KEYS = { tickets: 'actualTicketCost' };
+      const costKey = GRP_COST_KEYS[field];
+      g[field] = true;
+      if (costKey) g[costKey] = amount;
+      document.getElementById('cost-prompt-modal').classList.remove('open');
+      const rowId = 'grp_' + gId;
+      const acc = document.getElementById('accordion-' + rowId);
+      if (acc) acc.querySelector('td').innerHTML = buildGroupTourAccordionInner(g);
+      dbSaveGroupTour(g);
+      if (quotedVal > 0) {
+        const diff = quotedVal - amount;
+        if (diff > 0) showToast('💚', `Saved! LKR ${diff.toLocaleString()} under quoted`);
+        else if (diff < 0) showToast('🔴', `LKR ${Math.abs(diff).toLocaleString()} over quoted`);
+        else showToast('✅', `Exact match — LKR ${amount.toLocaleString()}`);
+      } else {
+        showToast('✅', `${field} confirmed — LKR ${amount.toLocaleString()}`);
+      }
+      return;
+    }
+
+    // ── Supplier payment field ──
     if (!g.supplierPayments) g.supplierPayments = {};
     const existing = migrateSupplierPayment(g.supplierPayments[supplierName]);
 
@@ -4959,7 +5038,7 @@ function openEditModal(id) {
       childRows.innerHTML = activeCats.map(c => {
         const cpp=(parseInt(c.dmcRate)||0)+((inv3&&inv3.charges)||0)+((inv3&&inv3.profit)||0)+((c.ticketPrice!==undefined&&c.ticketPrice!=='')?parseInt(c.ticketPrice)||0:((inv3&&inv3.ticketPrice)||0));
         return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px">
-          <span style="font-weight:600;color:var(--teal)">${c.count}×</span> ${CLABELS[c.type]||c.type}
+          <span style="font-weight:600;color:var(--teal)">${c.count}×</span> ${CLABELS[c.type]||c.label||c.type}
           <span style="color:var(--text2);margin-left:6px">LKR ${cpp.toLocaleString()}/pax</span>
         </div>`;
       }).join('');
@@ -5510,7 +5589,7 @@ function renderQuotes() {
       </td>
       <td style="max-width:220px;font-size:12.5px">${q.tour}</td>
       <td style="font-size:12.5px">${dateStr}</td>
-      <td style="text-align:center"><span class="badge badge-gray">👥 ${q.pax}</span></td>
+      <td style="text-align:center"><span class="badge badge-gray">👥 ${totalPax(q)}</span></td>
       <td style="font-family:'DM Mono',monospace;color:var(--green);font-weight:600">LKR ${(q.total||0).toLocaleString()}</td>
       <td>${statusBadge}</td>
       <td>
@@ -6231,6 +6310,7 @@ function saveQuote() {
     dmc: document.getElementById('q-dmc-list').value || selectedQuoteDmcs.join(','),
     dmcRate: dmcAdult, charges, supplierCharges: { ...supplierChargesMap }, supplierRates: JSON.parse(JSON.stringify(supplierRatesMap)), profit: qSelectedProfit || (parseInt(document.getElementById('q-profit').value) || 0),
     ticketPrice, withTicket,
+    airline: qAirlines.filter(a => a.name).map(a => a.name).join(', '),
     airlines: JSON.parse(JSON.stringify(qAirlines)),
     cityNights: JSON.parse(JSON.stringify(qSelectedCities)),
     childCategories: JSON.parse(JSON.stringify(qChildCategories)),
@@ -6347,6 +6427,7 @@ function confirmCreateInvoice() {
     supplierCharges: q.supplierCharges ? JSON.parse(JSON.stringify(q.supplierCharges)) : {},
     supplierRates: q.supplierRates ? JSON.parse(JSON.stringify(q.supplierRates)) : {},
     dmcRate: q.dmcRate || 0,
+    dmc: q.dmc || '',
     total, deposit, balance, within30,
     travelDate: travelDateStr,
     balanceDueDate: balanceDueDateStr,
@@ -6460,7 +6541,7 @@ function showPDFPreview(q) {
             <td style="padding:8px 16px 4px;font-size:14px;text-align:right;color:#111">${priceFmt}</td>
             <td style="padding:8px 16px 4px;font-size:14px;text-align:right;color:#111">LKR ${((q.pricePerPax||0)*(q.pax||0)).toLocaleString()}</td>
           </tr>
-          ${(()=>{ const CLABELS={infant:'Infant (Below 2 Years)',child2:'Child (Age 2–5 Years)',child6:'Child (Age 6–9 Years)',child10:'Child (Above 10 Years)',toddler:'Child (Age 3–6 Years)',child:'Child (Age 7–9 Years)',older:'Child (Above 9 Years)'}; return (q.childCategories||[]).filter(c=>parseInt(c.count)>0).map(c=>{ const cpp=(parseInt(c.dmcRate)||0)+(q.charges||0)+(q.profit||0)+((c.ticketPrice!==undefined&&c.ticketPrice!=='')?(parseInt(c.ticketPrice)||0):(q.ticketPrice||0)); const ct=cpp*(parseInt(c.count)||0); return `<tr><td style="padding:8px 16px 4px;font-size:14px;font-weight:700;color:#111">${CLABELS[c.type]||c.type}</td><td style="padding:8px 16px 4px;font-size:14px;text-align:center;color:#111">${String(c.count).padStart(2,'0')}</td><td style="padding:8px 16px 4px;font-size:14px;text-align:right;color:#111">${cpp.toLocaleString()}</td><td style="padding:8px 16px 4px;font-size:14px;text-align:right;color:#111">LKR ${ct.toLocaleString()}</td></tr>`; }).join(''); })()}
+          ${(()=>{ const CLABELS={infant:'Infant (Below 2 Years)',child2:'Child (Age 2–5 Years)',child6:'Child (Age 6–9 Years)',child10:'Child (Above 10 Years)',toddler:'Child (Age 3–6 Years)',child:'Child (Age 7–9 Years)',older:'Child (Above 9 Years)'}; return (q.childCategories||[]).filter(c=>parseInt(c.count)>0).map(c=>{ const cpp=(parseInt(c.dmcRate)||0)+(q.charges||0)+(q.profit||0)+((c.ticketPrice!==undefined&&c.ticketPrice!=='')?(parseInt(c.ticketPrice)||0):(q.ticketPrice||0)); const ct=cpp*(parseInt(c.count)||0); return `<tr><td style="padding:8px 16px 4px;font-size:14px;font-weight:700;color:#111">${CLABELS[c.type]||c.label||c.type}</td><td style="padding:8px 16px 4px;font-size:14px;text-align:center;color:#111">${String(c.count).padStart(2,'0')}</td><td style="padding:8px 16px 4px;font-size:14px;text-align:right;color:#111">${cpp.toLocaleString()}</td><td style="padding:8px 16px 4px;font-size:14px;text-align:right;color:#111">LKR ${ct.toLocaleString()}</td></tr>`; }).join(''); })()}
         </tbody>
       </table>
 
@@ -6517,7 +6598,7 @@ let currentInvFilter = 'all';
 
 function nextInvoiceNumber(qid) {
   // INV-XXXX always matches the quote number Q-XXXX
-  if (qid) return 'INV-' + qid.replace('Q','');
+  if (qid) return 'INV-' + qid.replace(/^[A-Za-z\-]+/, '');
   if (!invoices.length) return 'INV-4136';
   const nums = invoices.map(i => parseInt(i.id.replace('INV-',''))).filter(n => !isNaN(n));
   return 'INV-' + (Math.max(...nums) + 1);
@@ -6741,8 +6822,14 @@ function confirmDepositWithDates() {
     const travelDisplay = departureDate
       ? new Date(departureDate).toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'}).toUpperCase()
       : 'TBC';
+    // Generate booking ID — avoid collisions with existing bookings
+    let bookingId = bookingIdFromQuote(inv.quoteId || inv.id);
+    while (bookings.find(b => b.id === bookingId)) {
+      const num = parseInt(bookingId.replace(/^[A-Za-z\-]+/, '')) || 0;
+      bookingId = 'YH' + (num + 1);
+    }
     const newBooking = {
-      id: bookingIdFromQuote(inv.quoteId || inv.id),
+      id: bookingId,
       invoiceId: inv.id,
       name: inv.name,
       mobile: inv.mobile || '',
@@ -6753,11 +6840,14 @@ function confirmDepositWithDates() {
       date: travelDisplay,
       departureDate: departureDate || '',
       returnDate: returnDate || '',
+      total: inv.total || 0,
       advance: actualDeposit,
       due: newBalance,
+      balanceDueDate: inv.balanceDueDate || '',
       fullPaid: inv.balancePaid ? 'Invoice' : '',
       payNote: 'Invoice ' + inv.id,
-      dmc: '', dmcAdvance: '', dmcFull: '',
+      estimatedProfit: inv.estimatedProfit || 0,
+      dmc: inv.dmc || '', dmcAdvance: '', dmcFull: '',
       childCategories: inv.childCategories ? JSON.parse(JSON.stringify(inv.childCategories)) : [],
       cityNights: inv.cityNights ? JSON.parse(JSON.stringify(inv.cityNights)) : [],
       tickets: false, prepared: false, sent: false,
@@ -6843,7 +6933,7 @@ function openMergeBooking() {
       const retFmt = b.returnDate
         ? ' → ' + new Date(b.returnDate).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})
         : '';
-      opt.textContent = `${b.id} · ${b.name} · ${depFmt}${retFmt} · ${b.pax} pax`;
+      opt.textContent = `${b.id} · ${b.name} · ${depFmt}${retFmt} · ${totalPax(b)} pax`;
       sel.appendChild(opt);
     });
     sel.onchange = updateMergePreview;
@@ -7146,7 +7236,7 @@ function showInvoicePDFPreview(inv) {
               return (inv.childCategories||[]).filter(c=>parseInt(c.count)>0).map(c=>{
                 const cpp=(parseInt(c.dmcRate)||0)+(inv.charges||0)+(inv.profit||0)+((c.ticketPrice!==undefined&&c.ticketPrice!=='')?parseInt(c.ticketPrice)||0:(inv.ticketPrice||0));
                 const ct=cpp*(parseInt(c.count)||0);
-                return '<tr><td style="padding:6px 16px 4px;font-size:14px;font-weight:700">'+(CLABELS[c.type]||c.type)+'</td><td style="padding:6px 16px 4px;font-size:14px;text-align:center">'+String(c.count).padStart(2,'0')+'</td><td style="padding:6px 16px 4px;font-size:14px;text-align:right">'+cpp.toLocaleString()+'</td><td style="padding:6px 16px 4px;font-size:14px;text-align:right">LKR '+ct.toLocaleString()+'</td></tr>';
+                return '<tr><td style="padding:6px 16px 4px;font-size:14px;font-weight:700">'+(CLABELS[c.type]||c.label||c.type)+'</td><td style="padding:6px 16px 4px;font-size:14px;text-align:center">'+String(c.count).padStart(2,'0')+'</td><td style="padding:6px 16px 4px;font-size:14px;text-align:right">'+cpp.toLocaleString()+'</td><td style="padding:6px 16px 4px;font-size:14px;text-align:right">LKR '+ct.toLocaleString()+'</td></tr>';
               }).join('');
             })()}
           </tbody>
@@ -7220,7 +7310,7 @@ function showInvoicePDFPreview(inv) {
           </table>
         </div>
 
-        <div style="margin:14px 48px 0;font-size:12px;color:${(inv.depositPaid && (inv.balancePaid || inv.balance === 0)) ? '#1a7a3a' : inv.depositPaid ? '#b45a00' : '#888'}">Travel Date: ${travelFmt} &nbsp;|&nbsp; ${escLabel}</div>
+        <div style="margin:14px 48px 0;font-size:12px;color:${(inv.depositPaid && (inv.balancePaid || inv.balance === 0)) ? '#1a7a3a' : inv.depositPaid ? '#b45a00' : '#888'}">Travel Date: ${travelFmt}${(inv.balanceDueDate && !inv.balancePaid && inv.balance > 0) ? ' &nbsp;|&nbsp; Balance Due By: ' + balDueFmt : ''} &nbsp;|&nbsp; ${escLabel}</div>
 
         <!-- FOOTER -->
         <div style="position:absolute;bottom:0;left:0;right:0;padding:13px 48px;background:#fafafa;border-top:1px solid #e5e5e5;display:flex;justify-content:space-between;align-items:center">
@@ -7259,12 +7349,12 @@ let revenueActuals = {
 
 function calcEstimatedCost(q) {
   // Cost = total - (profit per adult × adults) - (profit per child × children)
-  // Or simply: total - (profit × totalPax)
+  // Or simply: total - (profit × allPax)
   const pax = q.pax || 0;
   const profit = q.profit || 0;
   const childPax = (q.childCategories || []).reduce((a, c) => a + (parseInt(c.count) || 0), 0);
-  const totalPax = pax + childPax;
-  return (q.total || 0) - (profit * totalPax);
+  const allPax = pax + childPax;
+  return (q.total || 0) - (profit * allPax);
 }
 
 function calcEstimatedProfit(q) {
@@ -7293,7 +7383,7 @@ function getActualsForBooking(booking, inv, q) {
   // Get quoted values as fallback baseline
   const pax = (q && q.pax ? parseInt(q.pax) : 0) || (inv && inv.pax ? parseInt(inv.pax) : 1);
   const childPax = q ? (q.childCategories||[]).reduce((a,c)=>a+(parseInt(c.count)||0),0) : 0;
-  const totalPax = pax + childPax;
+  const allPax = pax + childPax;
 
   const qTicket  = ((q && parseInt(q.ticketPrice))  || (inv && parseInt(inv.ticketPrice))  || 0);
   const qDmc     = ((q && parseInt(q.dmcRate))       || (inv && parseInt(inv.dmcRate))       || 0);
@@ -7302,7 +7392,7 @@ function getActualsForBooking(booking, inv, q) {
   const sc = (inv && inv.supplierCharges && Object.keys(inv.supplierCharges).length)
                ? inv.supplierCharges
                : ((q && q.supplierCharges) ? q.supplierCharges : {});
-  const qSupplier = Object.values(sc).reduce((a,v)=>(a+(parseInt(v)||0)),0) * totalPax;
+  const qSupplier = Object.values(sc).reduce((a,v)=>(a+(parseInt(v)||0)),0) * allPax;
 
   // Defaults: quoted values (assume on-quote until overridden)
   // For ticket: per adult * adults + per child * children
@@ -7316,10 +7406,10 @@ function getActualsForBooking(booking, inv, q) {
     });
   }
   const quotedTicketTotal   = adultTicket * pax + childTicketTotal;
-  const quotedDmcTotal      = qDmc * totalPax;
+  const quotedDmcTotal      = qDmc * allPax;
   const quotedDeliveryTotal = qCharges > 0 ? qCharges : 0; // charges is already total in some contexts
   // Note: charges in quote is per-pax for delivery
-  const quotedDeliveryFull  = qCharges * totalPax;
+  const quotedDeliveryFull  = qCharges * allPax;
 
   var hasAnyMerged = Object.keys(mc).length > 0;
 
@@ -8125,7 +8215,7 @@ function renderGroupCards() {
   el.innerHTML = groupTours.map(g => {
     const gAllInvs = invoices.filter(i => i.groupTourId === g.id);
     const gPaidInvs = gAllInvs.filter(i => i.depositPaid || i.balancePaid || i.status === 'paid');
-    const totalPax = gPaidInvs.reduce((s,i) => s+(i.pax||0), 0);
+    const grpCardPax = gPaidInvs.reduce((s,i) => s + totalPax(i), 0);
     const depFmt = g.depDate ? new Date(g.depDate).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '—';
     const retFmt = g.retDate ? new Date(g.retDate).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '—';
     return `<div class="pkg-card group-tour-card">
@@ -8138,7 +8228,7 @@ function renderGroupCards() {
         <div class="pkg-card-row"><span style="color:var(--text2)">Departure</span><span class="pkg-card-val" style="color:var(--red)">${depFmt}</span></div>
         <div class="pkg-card-row"><span style="color:var(--text2)">Return</span><span class="pkg-card-val">${retFmt}</span></div>
         <div class="pkg-card-row"><span style="color:var(--text2)">Adult Price</span><span class="pkg-card-val" style="color:var(--green)">LKR ${(g.pricePerPax||0).toLocaleString()}</span></div>
-        <div class="pkg-card-row"><span style="color:var(--text2)">Confirmed</span><span class="pkg-card-val" style="color:var(--teal)">${gPaidInvs.length} paid · ${totalPax} pax${g.maxPax?' / '+g.maxPax:''}</span></div>
+        <div class="pkg-card-row"><span style="color:var(--text2)">Confirmed</span><span class="pkg-card-val" style="color:var(--teal)">${gPaidInvs.length} paid · ${grpCardPax} pax${g.maxPax?' / '+g.maxPax:''}</span></div>
         <div class="pkg-card-row"><span style="color:var(--text2)">Pending</span><span class="pkg-card-val" style="color:var(--text2)">${gAllInvs.length - gPaidInvs.length} unpaid invoice${gAllInvs.length - gPaidInvs.length !== 1 ? 's' : ''}</span></div>
         <div class="pkg-card-row"><span style="color:var(--text2)">Advance/Pax</span><span class="pkg-card-val">${g.advancePerPax ? 'LKR '+(g.advancePerPax).toLocaleString() : (g.advancePct ? g.advancePct+'%' : '—')}</span></div>
         <div class="pkg-card-row"><span style="color:var(--text2)">Full Pay Due</span><span class="pkg-card-val">${g.fullPayDue||'—'}</span></div>
@@ -9405,7 +9495,7 @@ function confirmBookFromPackage() {
     const childTicket = p.withTicket
       ? ((rule.airfare !== undefined && rule.airfare !== '') ? (parseInt(rule.airfare) || 0) : Math.round(adultTicket * pct / 100))
       : 0;
-    const type = 'pkgage' + i;
+    const type = rule.type || ('pkgage' + i);
     // Add per-supplier child rate so calcSupplierQuotedTotal works correctly
     Object.keys(resolvedSupplierRates).forEach(sName => {
       const adultRate = parseInt(resolvedSupplierRates[sName]?.adult) || 0;
@@ -9467,11 +9557,11 @@ function openJoinGroupModal() {
   } else {
     list.innerHTML = active.map(g => {
       const gInvs    = invoices.filter(i => i.groupTourId === g.id);
-      const totalPax = gInvs.reduce((s, i) => s + (i.pax||0), 0);
+      const regPax = gInvs.reduce((s, i) => s + totalPax(i), 0);
       return `<div onclick="jgrpSelectGroup('${g.id}')" style="background:var(--surface2);border:1px solid rgba(248,113,113,0.3);border-radius:10px;padding:14px;cursor:pointer;transition:border-color 0.15s">
         <div style="font-weight:700;font-size:14px;margin-bottom:4px">👥 ${g.name}</div>
         <div style="font-size:12px;color:var(--text2)">🌏 ${g.dest||'—'} · 🗓 ${g.depDate||'—'} → ${g.retDate||'—'}</div>
-        <div style="font-size:13px;color:var(--accent);font-weight:600;margin-top:4px">LKR ${(g.pricePerPax||0).toLocaleString()}/adult (fixed) · ${totalPax}${g.maxPax?' / '+g.maxPax:''} pax registered</div>
+        <div style="font-size:13px;color:var(--accent);font-weight:600;margin-top:4px">LKR ${(g.pricePerPax||0).toLocaleString()}/adult (fixed) · ${regPax}${g.maxPax?' / '+g.maxPax:''} pax registered</div>
       </div>`;
     }).join('');
   }
@@ -9626,7 +9716,9 @@ function confirmJoinGroupTour() {
   });
 
   const total   = adultTotal + childTotal;
-  const deposit = g.advancePerPax > 0 ? g.advancePerPax * pax : Math.round(total * ((g.advancePct||40)/100));
+  const childPaxCount = bookingChildCategories.reduce((s, c) => s + (c.count || 0), 0);
+  const allTravellers = pax + childPaxCount;
+  const deposit = g.advancePerPax > 0 ? g.advancePerPax * allTravellers : Math.round(total * ((g.advancePct||40)/100));
   const balance = total - deposit;
 
   const bid    = generateId();
@@ -9665,8 +9757,8 @@ function confirmJoinGroupTour() {
   dbSaveCustomer(c);
   dbSaveInvoice(inv);
 
-  // Update group tour registered pax count (from linked invoices)
-  const allPax = invoices.filter(i => i.groupTourId === g.id).reduce((s, i) => s + (i.pax||0), 0);
+  // Update group tour registered pax count (from linked invoices) — includes children
+  const allPax = invoices.filter(i => i.groupTourId === g.id).reduce((s, i) => s + totalPax(i), 0);
   g.bookedPax = allPax;
   dbSaveGroupTour(g);
 
@@ -9985,7 +10077,7 @@ function renderSupplierBookingsPanel() {
       <td><span class="order-id">${b.id}</span></td>
       <td><div style="font-weight:600">${b.name}</div><div style="font-size:11px;color:var(--text2)">${b.mobile||''}</div></td>
       <td style="font-size:12px">${b.date}</td>
-      <td style="text-align:center"><span class="badge badge-gray">👥 ${b.pax}</span></td>
+      <td style="text-align:center"><span class="badge badge-gray">👥 ${totalPax(b)}</span></td>
       <td><span class="badge badge-purple">🌏 ${b.dest||'—'}</span></td>
       <td>${invStatus}</td>
     </tr>`;

@@ -26,7 +26,9 @@ export default async (req) => {
           deposit, balance, within30, travel_date, balance_due_date,
           estimated_profit, deposit_paid, balance_paid, status,
           travel_start_date, return_date, merged_into_booking, created_date,
-          group_tour_id, tour_package_id, city_nights
+          group_tour_id, tour_package_id, city_nights,
+          dest, charges, profit, ticket_price, with_ticket, dmc_rate, dmc,
+          supplier_charges, supplier_rates, payments, deposit_date, deposit_ts
         ) VALUES (
           ${inv.id}, ${inv.quoteId||''}, ${inv.name}, ${inv.mobile||''},
           ${inv.tour||''}, ${inv.airline||''}, ${inv.hotels||''},
@@ -42,7 +44,14 @@ export default async (req) => {
           ${inv.mergedIntoBooking||''},
           ${inv.createdDate||new Date().toISOString().split('T')[0]},
           ${inv.groupTourId||''}, ${inv.tourPackageId||''},
-          ${JSON.stringify(inv.cityNights||[])}
+          ${JSON.stringify(inv.cityNights||[])},
+          ${inv.dest||''}, ${inv.charges||0}, ${inv.profit||0},
+          ${inv.ticketPrice||0}, ${inv.withTicket||false},
+          ${inv.dmcRate||0}, ${inv.dmc||''},
+          ${JSON.stringify(inv.supplierCharges||{})},
+          ${JSON.stringify(inv.supplierRates||{})},
+          ${JSON.stringify(inv.payments||[])},
+          ${inv.depositDate||''}, ${inv.depositTs||''}
         )
       `;
       return Response.json({ ok: true, id: inv.id }, { status: 201 });
@@ -78,7 +87,19 @@ export default async (req) => {
           merged_into_booking  = ${inv.mergedIntoBooking||''},
           group_tour_id        = ${inv.groupTourId||''},
           tour_package_id      = ${inv.tourPackageId||''},
-          city_nights          = ${JSON.stringify(inv.cityNights||[])}
+          city_nights          = ${JSON.stringify(inv.cityNights||[])},
+          dest                 = ${inv.dest||''},
+          charges              = ${inv.charges||0},
+          profit               = ${inv.profit||0},
+          ticket_price         = ${inv.ticketPrice||0},
+          with_ticket          = ${inv.withTicket||false},
+          dmc_rate             = ${inv.dmcRate||0},
+          dmc                  = ${inv.dmc||''},
+          supplier_charges     = ${JSON.stringify(inv.supplierCharges||{})},
+          supplier_rates       = ${JSON.stringify(inv.supplierRates||{})},
+          payments             = ${JSON.stringify(inv.payments||[])},
+          deposit_date         = ${inv.depositDate||''},
+          deposit_ts           = ${inv.depositTs||''}
         WHERE id = ${id}
       `;
       return Response.json({ ok: true });
@@ -127,6 +148,18 @@ function dbToInvoice(r) {
     groupTourId: r.group_tour_id || '',
     tourPackageId: r.tour_package_id || '',
     cityNights: r.city_nights || [],
+    dest: r.dest || '',
+    charges: r.charges || 0,
+    profit: r.profit || 0,
+    ticketPrice: r.ticket_price || 0,
+    withTicket: r.with_ticket || false,
+    dmcRate: r.dmc_rate || 0,
+    dmc: r.dmc || '',
+    supplierCharges: r.supplier_charges || {},
+    supplierRates: r.supplier_rates || {},
+    payments: r.payments || [],
+    depositDate: r.deposit_date || '',
+    depositTs: r.deposit_ts || '',
   };
 }
 

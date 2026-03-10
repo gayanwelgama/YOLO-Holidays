@@ -55,7 +55,11 @@
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); i=d[0]; print\\(f''{len\\(d\\)} invoices. First: groupTourId={repr\\(i.get\\(\"\"groupTourId\"\"\\)\\)}, cityNights={repr\\(i.get\\(\"\"cityNights\"\"\\)\\)}''\\)\")",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); t=[x for x in d if x[''id'']==''SAVETEST'']; print\\(''SAVED OK — cityNights:'', t[0][''cityNights''] if t else ''NOT FOUND''\\)\")",
       "Bash(curl -s -X DELETE \"http://localhost:9000/api/quotes\" -H \"Content-Type: application/json\" -G --data-urlencode \"id=SAVETEST\")",
-      "Bash(git add -A)"
+      "Bash(git add -A)",
+      "Bash(git rm -r --cached node_modules/ package-lock.json deno.lock .claude/worktrees/)",
+      "Bash(git add .gitignore)",
+      "Bash(curl -s http://localhost:9000/api/suppliers)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f''{len\\(d\\)} suppliers''\\); [print\\(s.get\\(''id''\\), s.get\\(''name''\\), s.get\\(''type''\\)\\) for s in d]\")"
     ]
   }
 }
